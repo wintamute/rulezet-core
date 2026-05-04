@@ -1,0 +1,408 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid mt-3 px-4" id="jobs-app" v-cloak>
+
+    <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--text-color)">
+                <i class="fas fa-tasks me-2 text-primary"></i>My Jobs
+            </h4>
+            <small class="text-muted">Background tasks you have launched.</small>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" v-model="filterStatus"
+                    @change="load" style="width:150px">
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="running">Running</option>
+                <option value="paused">Paused</option>
+                <option value="done">Done</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn btn-sm btn-outline-secondary" @click="load" title="Refresh">
+                <i class="fas fa-sync" :class="{ 'fa-spin': loading }"></i>
+            </button>
+        </div>
+    </div>
+
+    <div v-if="loading && !jobs.length" class="text-center py-5">
+        <div class="spinner-border text-primary"></div>
+    </div>
+
+    <div v-else-if="!jobs.length" class="text-center text-muted py-5">
+        <i class="fas fa-tasks fa-2x d-block mb-2 opacity-25"></i>
+        No jobs found.
+    </div>
+
+    <div v-else class="d-flex flex-column gap-3">
+        <div v-for="job in jobs" :key="job.uuid" class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-3">
+
+                <!-- ── Top row: info + actions ── -->
+                <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+
+                    <!-- Info -->
+                    <div class="flex-grow-1 min-width-0" style="cursor:pointer"
+                         @click="toggleDetail(job.uuid)">
+
+                        <!-- Title + badges -->
+                        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                            <i :class="[statusIcon(job.status), 'text-' + statusColor(job.status)]"></i>
+                            <span class="fw-semibold" style="color: var(--text-color)">
+                                [[ job.label || job.job_type ]]
+                            </span>
+                            <span class="badge rounded-pill"
+                                  :class="'bg-' + statusColor(job.status) + '-subtle text-' + statusColor(job.status)">
+                                [[ job.status ]]
+                            </span>
+                            <span class="badge bg-light border text-dark small font-monospace">
+                                [[ job.job_type ]]
+                            </span>
+                            <!-- expand toggle -->
+                            <i class="fas ms-auto opacity-50"
+                               :class="expandedJob === job.uuid ? 'fa-chevron-up' : 'fa-chevron-down'"
+                               style="font-size:0.7rem"></i>
+                        </div>
+
+                        <!-- Progress bar -->
+                        <div v-if="['running', 'done', 'paused'].includes(job.status)" class="mb-2">
+                            <div class="d-flex justify-content-between small mb-1"
+                                 style="color: var(--subtle-text-color)">
+                                <span>[[ job.done.toLocaleString() ]] / [[ job.total.toLocaleString() ]] rules</span>
+                                <span class="fw-semibold">[[ job.progress_pct ]]%</span>
+                            </div>
+                            <div class="progress" style="height:6px; border-radius:3px;">
+                                <div class="progress-bar"
+                                     :class="[
+                                        job.status === 'running' ? 'progress-bar-animated progress-bar-striped' : '',
+                                        'bg-' + statusColor(job.status)
+                                     ]"
+                                     :style="{ width: job.progress_pct + '%' }">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pending notice -->
+                        <div v-if="job.status === 'pending'" class="small"
+                             style="color: var(--subtle-text-color)">
+                            <i class="fas fa-hourglass-start me-1"></i>Queued, waiting for worker…
+                        </div>
+
+                        <!-- Paused notice -->
+                        <div v-if="job.status === 'paused'" class="small text-info">
+                            <i class="fas fa-pause-circle me-1"></i>
+                            Paused at [[ job.progress_pct ]]% — resume when ready.
+                        </div>
+
+                        <!-- Error -->
+                        <div v-if="job.error" class="small text-danger mt-1">
+                            <i class="fas fa-exclamation-triangle me-1"></i>[[ job.error ]]
+                        </div>
+
+                        <!-- Timestamps -->
+                        <div class="d-flex flex-wrap gap-3 mt-1"
+                             style="font-size:0.75rem; color: var(--subtle-text-color)">
+                            <span>
+                                <i class="fas fa-plus-circle me-1 opacity-50"></i>Created [[ job.created_at ]]
+                            </span>
+                            <span v-if="job.started_at">
+                                <i class="fas fa-play-circle me-1 opacity-50"></i>Started [[ job.started_at ]]
+                            </span>
+                            <span v-if="job.finished_at">
+                                <i class="fas fa-flag-checkered me-1 opacity-50"></i>Finished [[ job.finished_at ]]
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Actions column -->
+                    <div class="d-flex flex-column gap-1" style="min-width:100px">
+
+                        <button v-if="['pending','running'].includes(job.status)"
+                                class="btn btn-sm btn-outline-info"
+                                @click="doAction(job, 'pause')"
+                                :disabled="!!acting[job.uuid]">
+                            <span v-if="acting[job.uuid] === 'pause'"
+                                  class="spinner-border spinner-border-sm me-1"></span>
+                            <i v-else class="fas fa-pause me-1"></i>Pause
+                        </button>
+
+                        <button v-if="job.status === 'paused'"
+                                class="btn btn-sm btn-outline-primary"
+                                @click="doAction(job, 'resume')"
+                                :disabled="!!acting[job.uuid]">
+                            <span v-if="acting[job.uuid] === 'resume'"
+                                  class="spinner-border spinner-border-sm me-1"></span>
+                            <i v-else class="fas fa-play me-1"></i>Resume
+                        </button>
+
+                        <button v-if="['pending','running','paused'].includes(job.status)"
+                                class="btn btn-sm btn-outline-danger"
+                                @click="doAction(job, 'cancel')"
+                                :disabled="!!acting[job.uuid]">
+                            <span v-if="acting[job.uuid] === 'cancel'"
+                                  class="spinner-border spinner-border-sm me-1"></span>
+                            <i v-else class="fas fa-stop me-1"></i>Stop
+                        </button>
+
+                        <button v-if="['done','failed','cancelled','paused'].includes(job.status)"
+                                class="btn btn-sm btn-outline-secondary"
+                                @click="doAction(job, 'delete')"
+                                :disabled="!!acting[job.uuid]">
+                            <span v-if="acting[job.uuid] === 'delete'"
+                                  class="spinner-border spinner-border-sm me-1"></span>
+                            <i v-else class="fas fa-trash me-1"></i>Delete
+                        </button>
+
+                    </div>
+                </div>
+
+                <!-- ── Expandable detail panel ── -->
+                <div v-if="expandedJob === job.uuid" class="mt-3 pt-3"
+                     style="border-top: 1px solid var(--border-color)">
+
+                    <!-- Log loading -->
+                    <div v-if="logsLoading[job.uuid]" class="text-center py-2">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <span class="ms-2 small text-muted">Loading activity…</span>
+                    </div>
+
+                    <!-- Empty logs -->
+                    <div v-else-if="!jobLogs[job.uuid] || jobLogs[job.uuid].length === 0"
+                         class="text-center text-muted small py-2">
+                        <i class="fas fa-list-ul me-1 opacity-25"></i>No activity recorded yet.
+                    </div>
+
+                    <!-- Log feed -->
+                    <div v-else>
+                        <div class="d-flex align-items-center gap-1 mb-2"
+                             style="font-size:0.72rem; color: var(--subtle-text-color);
+                                    font-weight:600; text-transform:uppercase; letter-spacing:0.05em">
+                            <i class="fas fa-list-ul me-1"></i>Activity
+                            <span class="ms-auto badge bg-secondary rounded-pill"
+                                  style="font-size:0.65rem">
+                                [[ jobLogs[job.uuid].length ]] event(s)
+                            </span>
+                        </div>
+
+                        <div :ref="el => { if (el) logRefs[job.uuid] = el }"
+                             class="rounded-3 p-2"
+                             style="background: var(--code-bg-color);
+                                    max-height: 260px;
+                                    overflow-y: auto;
+                                    font-family: monospace;
+                                    font-size: 0.75rem;
+                                    line-height: 1.7;">
+                            <div v-for="log in jobLogs[job.uuid]" :key="log.id"
+                                 class="d-flex gap-2 align-items-start">
+                                <span style="color: var(--subtle-text-color); flex-shrink:0; user-select:none">
+                                    [[ shortTime(log.created_at) ]]
+                                </span>
+                                <i :class="[logLevelIcon(log.level), logLevelColor(log.level)]"
+                                   style="flex-shrink:0; margin-top:3px; font-size:0.65rem"></i>
+                                <span :class="logLevelColor(log.level)">[[ log.message ]]</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block script %}
+<script type="module">
+    const { createApp, ref, reactive, onMounted, onUnmounted, nextTick } = Vue;
+    import { create_message } from '/static/js/toaster.js';
+
+    createApp({
+        delimiters: ['[[', ']]'],
+        setup() {
+            const csrfToken    = '{{ csrf_token() }}';
+            const jobs         = ref([]);
+            const loading      = ref(true);
+            const filterStatus = ref('');
+            const acting       = reactive({});
+
+            // ── Detail / logs state ──────────────────────────────────────────
+            const expandedJob  = ref(null);   // uuid of the currently expanded job
+            const jobLogs      = reactive({}); // { [uuid]: log[] }
+            const logsLoading  = reactive({}); // { [uuid]: bool }
+            const lastLogId    = reactive({}); // { [uuid]: int } for incremental fetch
+            const logRefs      = reactive({}); // { [uuid]: DOM el } for auto-scroll
+            let   logPoller    = null;
+            let   autoTimer    = null;
+
+            // ── Helpers ──────────────────────────────────────────────────────
+
+            function statusColor(s) {
+                return { pending:'secondary', running:'primary', done:'success',
+                         failed:'danger', cancelled:'warning', paused:'info' }[s] || 'secondary';
+            }
+
+            function statusIcon(s) {
+                return { pending:'fas fa-clock', running:'fas fa-spinner fa-spin',
+                         done:'fas fa-check-circle', failed:'fas fa-times-circle',
+                         cancelled:'fas fa-ban', paused:'fas fa-pause-circle' }[s] || 'fas fa-clock';
+            }
+
+            function logLevelColor(level) {
+                return { info:'text-muted', success:'text-success',
+                         warning:'text-warning', error:'text-danger' }[level] || 'text-muted';
+            }
+
+            function logLevelIcon(level) {
+                return { info:'fas fa-circle-dot', success:'fas fa-check-circle',
+                         warning:'fas fa-triangle-exclamation',
+                         error:'fas fa-times-circle' }[level] || 'fas fa-circle-dot';
+            }
+
+            function shortTime(ts) {
+                if (!ts) return '';
+                return ts.split(' ')[1] || ts;
+            }
+
+            async function scrollLogToBottom(uuid) {
+                await nextTick();
+                const el = logRefs[uuid];
+                if (el) el.scrollTop = el.scrollHeight;
+            }
+
+            // ── Job list loading ─────────────────────────────────────────────
+
+            async function load() {
+                loading.value = true;
+                try {
+                    const params = filterStatus.value ? '?status=' + filterStatus.value : '';
+                    const res    = await fetch('/jobs/get_jobs' + params);
+                    const data   = await res.json();
+                    if (res.ok) jobs.value = data;
+                } finally {
+                    loading.value = false;
+                }
+            }
+
+            // ── Log fetching ─────────────────────────────────────────────────
+
+            async function fetchLogs(uuid, initial = false) {
+                if (initial) logsLoading[uuid] = true;
+                try {
+                    const since  = lastLogId[uuid] || 0;
+                    const res    = await fetch(`/jobs/logs/${uuid}?since_id=${since}`);
+                    const data   = await res.json();
+                    if (res.ok && data.length > 0) {
+                        if (!jobLogs[uuid]) jobLogs[uuid] = [];
+                        jobLogs[uuid].push(...data);
+                        lastLogId[uuid] = data[data.length - 1].id;
+                        scrollLogToBottom(uuid);
+                    }
+                } finally {
+                    if (initial) logsLoading[uuid] = false;
+                }
+            }
+
+            // ── Expand / collapse ────────────────────────────────────────────
+
+            async function toggleDetail(uuid) {
+                if (expandedJob.value === uuid) {
+                    // clear old logs to save memory, since we'll fetch fresh logs on next expand
+                    if (jobLogs[uuid]) jobLogs[uuid] = [];
+                    expandedJob.value = null;
+                    if (logPoller) { clearInterval(logPoller); logPoller = null; }
+                    return;
+                }
+
+                // expand
+                expandedJob.value = uuid;
+                if (!jobLogs[uuid]) jobLogs[uuid] = [];
+                lastLogId[uuid] = 0;
+
+                await fetchLogs(uuid, true);
+
+                // poll logs every 2s while expanded AND job is active
+                if (logPoller) clearInterval(logPoller);
+                logPoller = setInterval(async () => {
+                    if (!expandedJob.value) { clearInterval(logPoller); return; }
+                    await fetchLogs(expandedJob.value);
+                    // also refresh job list to get latest progress
+                    const job = jobs.value.find(j => j.uuid === expandedJob.value);
+                    if (job && ['pending', 'running'].includes(job.status)) {
+                        await load();
+                    }
+                }, 2000);
+            }
+
+            // ── Actions ──────────────────────────────────────────────────────
+
+            async function doAction(job, action) {
+                const confirmMessages = {
+                    cancel: 'Stop this job? Progress so far will be kept.',
+                    delete: 'Permanently delete this job record?',
+                };
+                if (confirmMessages[action] && !confirm(confirmMessages[action])) return;
+
+                acting[job.uuid] = action;
+                try {
+                    const res  = await fetch(`/jobs/${action}/${job.uuid}`, {
+                        method:  'POST',
+                        headers: { 'X-CSRFToken': csrfToken },
+                    });
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        create_message(data.message, 'success-subtle');
+                        if (action === 'delete') {
+                            jobs.value = jobs.value.filter(j => j.uuid !== job.uuid);
+                            if (expandedJob.value === job.uuid) {
+                                expandedJob.value = null;
+                                if (logPoller) { clearInterval(logPoller); logPoller = null; }
+                            }
+                        } else {
+                            await load();
+                            // refresh logs immediately to show the action log line
+                            if (expandedJob.value === job.uuid) {
+                                await fetchLogs(job.uuid);
+                            }
+                        }
+                    } else {
+                        create_message(data.message || 'Action failed.', 'danger-subtle');
+                    }
+                } finally {
+                    delete acting[job.uuid];
+                }
+            }
+
+            // ── Auto-refresh job list ────────────────────────────────────────
+
+            function maybeAutoRefresh() {
+                const hasActive = jobs.value.some(j => ['pending', 'running'].includes(j.status));
+                // only reload list if NOT already polling via logPoller
+                if (hasActive && !logPoller) load();
+            }
+
+            onMounted(() => {
+                load();
+                autoTimer = setInterval(maybeAutoRefresh, 3000);
+            });
+
+            onUnmounted(() => {
+                if (autoTimer) clearInterval(autoTimer);
+                if (logPoller) clearInterval(logPoller);
+            });
+
+            return {
+                jobs, loading, filterStatus, acting,
+                expandedJob, jobLogs, logsLoading, logRefs,
+                statusColor, statusIcon,
+                logLevelColor, logLevelIcon, shortTime,
+                load, doAction, toggleDetail,
+            };
+        }
+    }).mount('#jobs-app');
+</script>
+{% endblock %}

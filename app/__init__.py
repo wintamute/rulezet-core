@@ -48,6 +48,8 @@ def create_app():
     from .features.rule.rule import rule_blueprint  
     from .features.bundle.bundle import bundle_blueprint
     from .features.tags.tags import tags_blueprint
+    from app.features.jobs.jobs import jobs_blueprint
+
 
 
     app.register_blueprint(home_blueprint, url_prefix="/")
@@ -55,12 +57,18 @@ def create_app():
     app.register_blueprint(rule_blueprint, url_prefix="/rule")
     app.register_blueprint(bundle_blueprint, url_prefix="/bundle")
     app.register_blueprint(tags_blueprint, url_prefix="/tags")
+    app.register_blueprint(jobs_blueprint, url_prefix='/jobs')
 
     from app.api.api import api_blueprint
 
     csrf.exempt(api_blueprint)
    
     app.register_blueprint(api_blueprint, url_prefix="/api")
+
+
+    from app.features.jobs import job_handlers  # noqa
+    from app.features.jobs.job_worker import start_worker
+    start_worker(app)
 
     return app
     

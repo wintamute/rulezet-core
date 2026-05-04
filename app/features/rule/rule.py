@@ -2427,23 +2427,55 @@ def get_url_github():
         "total_pages": total_pages
     }), 200
 
+
+LARGE_DELETE_THRESHOLD = 200
+
+
 @rule_blueprint.route("/delete_all_rule_github", methods=['GET', 'POST'])
+@login_required
 def delete_all_rule_github():
-    if current_user.is_admin() == False:
+    if not current_user.is_admin():
         return jsonify({"message": "Access denied", "toast_class": "danger-subtle"}), 403
+
     url = request.args.get("url")
     if not url:
-        return jsonify({"message": "URL is required"}), 400
+        return jsonify({"message": "URL is required", "toast_class": "danger-subtle"}), 400
 
-    
-    success , message , nb = RuleModel.delete_all_rule_by_url(url)
+    # count how many rules are involved
+    count = RuleModel.count_rules_by_url(url)
 
+    if count > LARGE_DELETE_THRESHOLD:
+        # ── large delete → background job ────────────────────────────────────
+        import app.features.jobs.jobs_core as JobsModel
+        label = f"Delete {count} rule(s) from {url.split('github.com/')[-1]}"
+        job = JobsModel.create_job(
+            job_type='delete_github_rules',
+            payload={'urls': [url.strip()]},
+            label=label,
+            created_by=current_user.id,
+        )
+        if not job:
+            return jsonify({
+                "message": "Failed to create background job.",
+                "toast_class": "danger-subtle"
+            }), 500
+
+        return jsonify({
+            "status":      "job_queued",
+            "message":     f"{count} rules — deletion queued as background job.",
+            "job_uuid":    job.uuid,
+            "rule_count":  count,
+            "toast_class": "info-subtle",
+        }), 202
+
+    # ── small delete → synchronous as before ─────────────────────────────────
+    success, message, nb = RuleModel.delete_all_rule_by_url(url)
     return jsonify({
-        "status": "processing",
-        "message": message,
+        "status":        "done",
+        "message":       message,
         "deleted_count": nb,
-        "url": url,
-        "toast_class": "success-subtle" if success else "danger-subtle"
+        "url":           url,
+        "toast_class":   "success-subtle" if success else "danger-subtle",
     }), 202
 
 @rule_blueprint.route("/bulk_action_github", methods=['POST'])
@@ -3220,3 +3252,10 @@ def similarity():
     return {"success": True, "rules": formatted_rules}, 200
 
 
+@rule_blueprint.route('/bulk_tag', methods=['GET'])
+@login_required
+def bulk_tag():
+    if current_user.is_admin():
+        return render_template('jobs/bulk_tag.html')
+    else:
+        return render_template('access_denied.html')

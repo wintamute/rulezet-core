@@ -1,0 +1,676 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid mt-3 px-4" id="main-container" v-cloak>
+
+    <!-- Header -->
+    <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--text-color)">
+                <i class="fas fa-tags me-2 text-primary"></i>Bulk Tag Rules
+            </h4>
+            <small class="text-muted">
+                Filter rules precisely, pick tags, and apply them in the background.
+            </small>
+        </div>
+        <a href="/jobs/list" class="btn btn-sm btn-outline-secondary position-relative">
+            <i class="fas fa-tasks me-1"></i>My Jobs
+            <span v-if="runningJobCount > 0"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary"
+                  style="font-size:0.6rem">[[ runningJobCount ]]</span>
+        </a>
+    </div>
+
+    <div class="row g-4">
+
+        <!-- ── LEFT: Rule selection (reuses RuleSelectionTable exactly) ── -->
+        <div class="col-lg-7">
+
+            <!-- RuleSelectionTable handles filters + table + pagination -->
+            <!-- We pass a dummy submit-endpoint — the real submit is handled by launchJob() -->
+            <bulk-rule-selector
+                ref="selectorRef"
+                api-endpoint="/rule/get_rules_page_filter"
+                csrf-token="{{ csrf_token() }}"
+                @selection-ready="onSelectionReady">
+            </bulk-rule-selector>
+
+        </div>
+
+        <!-- ── RIGHT: Tag selection + launch ─────────────────────────── -->
+        <div class="col-lg-5">
+
+            <!-- Tag picker -->
+            <div class="card border-0 shadow-sm rounded-4 mb-3">
+                <div class="card-body p-3">
+                    <h6 class="fw-bold mb-3" style="color: var(--text-color)">
+                        <i class="fas fa-tag me-2 text-primary"></i>Tags to Apply
+                    </h6>
+
+                    <div class="input-group input-group-sm mb-2">
+                        <span class="input-group-text bg-transparent border-end-0">
+                            <i class="fas fa-search text-muted"></i>
+                        </span>
+                        <input type="text" class="form-control border-start-0"
+                               v-model="tagSearch" placeholder="Search tags…">
+                    </div>
+
+                    <!-- Source filter chips -->
+                    <div class="d-flex gap-1 mb-2 flex-wrap">
+                        <button v-for="src in ['All','Taxonomy','Galaxy','Manual']" :key="src"
+                                class="btn btn-xs rounded-pill"
+                                :class="tagSourceFilter === src ? 'btn-primary' : 'btn-outline-secondary'"
+                                style="font-size:0.7rem; padding:2px 10px"
+                                @click="tagSourceFilter = src">
+                            [[ src ]]
+                        </button>
+                    </div>
+
+                    <!-- Selected tags -->
+                    <div v-if="selectedTags.length > 0"
+                         class="d-flex flex-wrap gap-1 mb-2 p-2 rounded-3"
+                         style="background: var(--light-bg-color); min-height:40px">
+                        <span v-for="tag in selectedTags" :key="tag.id"
+                              class="badge d-flex align-items-center gap-1 px-2"
+                              :style="{ backgroundColor: tag.color, color: getTextColor(tag.color) }">
+                            <i :class="'fa ' + (tag.icon || 'fa-tag')" style="font-size:0.65rem"></i>
+                            [[ tag.name ]]
+                            <i class="fas fa-times ms-1" style="cursor:pointer; font-size:0.65rem"
+                               @click="deselectTag(tag.id)"></i>
+                        </span>
+                    </div>
+                    <p v-else class="text-muted small mb-2">No tags selected yet.</p>
+
+                    <!-- Tag list -->
+                    <div style="max-height:220px; overflow-y:auto;">
+                        <div v-for="tag in filteredTagList" :key="tag.id"
+                             class="d-flex align-items-center justify-content-between p-2 rounded-2 mb-1"
+                             :class="{ 'border border-primary bg-primary-subtle': isTagSelected(tag.id) }"
+                             style="cursor:pointer; background: var(--light-bg-color)"
+                             @click="toggleTagSelection(tag)">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                                      :style="{ background: tag.color, width:'24px', height:'24px', color: getTextColor(tag.color) }">
+                                    <i :class="'fa ' + (tag.icon || 'fa-tag')" style="font-size:0.6rem"></i>
+                                </span>
+                                <div>
+                                    <div class="small fw-semibold "
+                                         style=" color: var(--text-color)">
+                                        [[ tag.name ]]
+                                    </div>
+                                    <div class="text-muted" style="font-size:0.65rem">
+                                        [[ tag.source ]]
+                                    </div>
+                                </div>
+                            </div>
+                            <i v-if="isTagSelected(tag.id)"
+                               class="fas fa-check-circle text-primary"></i>
+                        </div>
+                        <div v-if="filteredTagList.length === 0"
+                             class="text-center text-muted py-3 small">
+                            No tags found.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Launch card -->
+            <div class="card border-0 shadow-sm rounded-4 mb-3">
+                <div class="card-body p-3">
+                    <h6 class="fw-bold mb-3" style="color: var(--text-color)">
+                        <i class="fas fa-play me-2 text-success"></i>Launch Job
+                    </h6>
+
+                    <!-- Summary -->
+                    <div class="rounded-3 p-3 mb-3 small"
+                         style="background: var(--light-bg-color); color: var(--subtle-text-color)">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span><i class="fas fa-shield-alt me-2"></i>Rules targeted</span>
+                            <strong style="color: var(--text-color)">
+                                [[ selectionSummary.count.toLocaleString() ]]
+                                <span class="text-muted fw-normal">([[ selectionSummary.mode ]])</span>
+                            </strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span><i class="fas fa-tags me-2"></i>Tags to apply</span>
+                            <strong style="color: var(--text-color)">[[ selectedTags.length ]]</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span><i class="fas fa-plus-minus me-2"></i>Action</span>
+                            <strong style="color: var(--text-color)">
+                                [[ action === 'add' ? 'Add tags' : 'Remove tags' ]]
+                            </strong>
+                        </div>
+                    </div>
+
+                    <!-- Add / Remove toggle -->
+                    <div class="btn-group btn-group-sm w-100 mb-3">
+                        <button class="btn"
+                                :class="action === 'add' ? 'btn-success' : 'btn-outline-secondary'"
+                                @click="action = 'add'">
+                            <i class="fas fa-plus me-1"></i>Add tags
+                        </button>
+                        <button class="btn"
+                                :class="action === 'remove' ? 'btn-danger' : 'btn-outline-secondary'"
+                                @click="action = 'remove'">
+                            <i class="fas fa-minus me-1"></i>Remove tags
+                        </button>
+                    </div>
+
+                    <!-- Validation warnings -->
+                    <div v-if="selectedTags.length === 0"
+                         class="alert alert-warning border-0 py-2 small mb-2">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        Select at least one tag.
+                    </div>
+                    <div v-else-if="selectionSummary.count === 0"
+                         class="alert alert-warning border-0 py-2 small mb-2">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        No rules selected. Use the table on the left.
+                    </div>
+
+                    <button class="btn btn-primary w-100 fw-bold rounded-pill"
+                            @click="launchJob"
+                            :disabled="launching
+                                || selectedTags.length === 0
+                                || selectionSummary.count === 0">
+                        <span v-if="launching"
+                              class="spinner-border spinner-border-sm me-2"></span>
+                        <i v-else class="fas fa-rocket me-2"></i>
+                        Launch in background
+                    </button>
+                </div>
+            </div>
+
+            <!-- Active job tracker -->
+            <div v-if="activeJobUuid" class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-3">
+                    <h6 class="fw-bold mb-3" style="color: var(--text-color)">
+                        <i class="fas fa-tasks me-2 text-primary"></i>Current Job
+                    </h6>
+                    <job-tracker
+                        :job-uuid="activeJobUuid"
+                        @done="onJobDone"
+                        @failed="onJobFailed"
+                        @deleted="activeJobUuid = null">
+                    </job-tracker>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block script %}
+<script type="module">
+    const { createApp, ref, computed, reactive, onMounted } = Vue;
+    import { create_message } from '/static/js/toaster.js';
+    import JobTracker        from '/static/js/jobs/JobTracker.js';
+    import RuleSelectionTable from '/static/js/rule/ruleSelectionTable.js';
+    import RuleFilterBar      from '/static/js/rule/ruleFilterBar.js';
+    import PaginationComponent from '/static/js/rule/paginationComponent.js';
+
+    function getTextColor(hex) {
+        if (!hex) return '#000';
+        hex = hex.replace('#', '');
+        const r = parseInt(hex.substr(0,2),16);
+        const g = parseInt(hex.substr(2,2),16);
+        const b = parseInt(hex.substr(4,2),16);
+        return ((r*299+g*587+b*114)/1000) >= 128 ? '#000000' : '#ffffff';
+    }
+
+    // ── BulkRuleSelector ─────────────────────────────────────────────────────
+    // Wraps RuleSelectionTable but replaces the submit button with an event
+    // emitted to the parent so it can launch a job instead.
+    const BulkRuleSelector = {
+        props: {
+            apiEndpoint: { type: String, required: true },
+            csrfToken:   { type: String, required: true },
+        },
+        emits: ['selection-ready'],
+        delimiters: ['[[', ']]'],
+        components: {
+            'rule-filter-bar':     RuleFilterBar,
+            'pagination-component': PaginationComponent,
+        },
+        data() {
+            return {
+                rules:          [],
+                allLoadedRules: new Map(),
+                expandedRows:   new Set(),
+                totalRules:     0,
+                currentPage:    1,
+                totalPages:     1,
+                loading:        false,
+                selectedIds:       new Set(),
+                excludedIds:       new Set(),
+                isAllSelectedMode: false,
+                currentFilters:    {},
+            };
+        },
+        computed: {
+            selectedCount() {
+                return this.isAllSelectedMode
+                    ? this.totalRules - this.excludedIds.size
+                    : this.selectedIds.size;
+            },
+            isPageFullySelected() {
+                if (!this.rules.length) return false;
+                return this.rules.every(r => this.isRuleChecked(r.id));
+            },
+            displayedSelection() {
+                const items = [];
+                if (!this.isAllSelectedMode) {
+                    for (let id of this.selectedIds) {
+                        const rule = this.allLoadedRules.get(id);
+                        items.push({ id, title: rule ? rule.title : `ID: ${id}` });
+                        if (items.length >= 50) break;
+                    }
+                }
+                return items;
+            },
+        },
+        methods: {
+            onRulesUpdated(data) {
+                this.rules          = data.rules && data.rules.rule ? data.rules.rule : [];
+                this.rules.forEach(r => this.allLoadedRules.set(r.id, r));
+                this.totalRules     = data.total_rules || 0;
+                this.totalPages     = data.total_pages || 1;
+                this.currentPage    = data.current_page || 1;
+                this.currentFilters = data.filters || {};
+                this.expandedRows.clear();
+            },
+            toggleRow(id) {
+                if (this.expandedRows.has(id)) this.expandedRows.delete(id);
+                else this.expandedRows.add(id);
+            },
+            toggleAllOnPage(e) {
+                this.rules.forEach(r => this.updateSelection(r.id, e.target.checked));
+            },
+            updateSelection(id, checked) {
+                if (this.isAllSelectedMode) {
+                    if (!checked) this.excludedIds.add(id);
+                    else this.excludedIds.delete(id);
+                } else {
+                    if (checked) this.selectedIds.add(id);
+                    else this.selectedIds.delete(id);
+                }
+            },
+            isRuleChecked(id) {
+                return this.isAllSelectedMode ? !this.excludedIds.has(id) : this.selectedIds.has(id);
+            },
+            toggleGlobalSelectAll() {
+                this.isAllSelectedMode = true;
+                this.selectedIds.clear();
+                this.excludedIds.clear();
+            },
+            clearAllSelection() {
+                this.isAllSelectedMode = false;
+                this.selectedIds.clear();
+                this.excludedIds.clear();
+            },
+            // Public method called by parent via ref — returns current selection state
+            getSelection() {
+                // read active filters directly from RuleFilterBar ref
+                // because currentFilters from onRulesUpdated is always {}
+                const fb = this.$refs.filterBar;
+                const activeFilters = fb ? {
+                    search:          fb.searchQuery       || null,
+                    search_field:    fb.searchField       || 'all',
+                    exact_match:     fb.exactMatch        || false,
+                    rule_type:       fb.ruleType          || null,
+                    sources:         fb.selectedSourceNames.length > 0
+                                        ? fb.selectedSourceNames.join(',') : null,
+                    vulnerabilities: fb.selectedVulnerabilityNames.length > 0
+                                        ? fb.selectedVulnerabilityNames.join(',') : null,
+                    licenses:        fb.selectedLicenseNames.length > 0
+                                        ? fb.selectedLicenseNames.join(',') : null,
+                    tags:            fb.selectedTagNames.length > 0
+                                        ? fb.selectedTagNames.join(',') : null,
+                } : this.currentFilters;
+
+                return {
+                    isAllMode:   this.isAllSelectedMode,
+                    selectedIds: Array.from(this.selectedIds),
+                    excludedIds: Array.from(this.excludedIds),
+                    count:       this.selectedCount,
+                    filters:     activeFilters,
+                };
+            },
+            // Called when the user clicks "Apply tags" — emits selection to parent
+            emitSelection() {
+                this.$emit('selection-ready', {
+                    mode:         this.isAllSelectedMode ? 'all' : 'partial',
+                    filters:      this.currentFilters,
+                    selected_ids: Array.from(this.selectedIds),
+                    excluded_ids: Array.from(this.excludedIds),
+                    total_rules:  this.totalRules,
+                    count:        this.selectedCount,
+                });
+            },
+        },
+        template: `
+        <div class="rule-selection-container">
+            <rule-filter-bar
+                ref="filterBar"
+                :api-endpoint="apiEndpoint"
+                :csrf-token="csrfToken"
+                :show-export="false"
+                @update:results="onRulesUpdated"
+                @loading="loading = $event">
+            </rule-filter-bar>
+
+            <!-- Selection status bar -->
+            <div v-if="totalRules > 0" class="selection-status-card mb-4 shadow-sm border-0">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <div class="selection-icon-box bg-primary text-white me-3">
+                            <i class="fas fa-tags"></i>
+                            <span v-if="selectedCount > 0"
+                                  class="selection-badge animate__animated animate__bounceIn">
+                                [[ selectedCount ]]
+                            </span>
+                        </div>
+                        <div>
+                            <h6 class="mb-0 fw-bold">Tag Selection</h6>
+                            <p class="text-muted small mb-0">
+                                [[ isAllSelectedMode ? 'Global Filter' : 'Manual Selection' ]]
+                            </p>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
+                                @click="toggleGlobalSelectAll">
+                            <i class="fas fa-check-double me-1"></i>Select all [[ totalRules ]]
+                        </button>
+                        <button v-if="selectedCount > 0"
+                                class="btn btn-outline-danger btn-sm rounded-pill px-3"
+                                @click="clearAllSelection">
+                            <i class="fas fa-trash-alt me-1"></i>Clear
+                        </button>
+                        <!-- This button triggers the job launch on the right panel -->
+                        <button class="btn btn-primary btn-sm rounded-pill px-4 shadow-sm"
+                                :disabled="selectedCount === 0 || loading"
+                                @click="emitSelection">
+                            <i class="fas fa-arrow-right me-1"></i>
+                            Apply tags to [[ selectedCount ]] rule(s)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rules table -->
+            <div class="custom-table-wrapper border rounded-4 overflow-hidden mb-4 shadow-sm">
+                <table class="table align-middle mb-0 custom-table">
+                    <thead>
+                        <tr class="bg-light text-muted small fw-bold">
+                            <th style="width:50px"></th>
+                            <th class="text-center" style="width:50px">
+                                <div class="custom-checkbox">
+                                    <input type="checkbox" :checked="isPageFullySelected"
+                                           @change="toggleAllOnPage" id="checkAll">
+                                    <label for="checkAll"></label>
+                                </div>
+                            </th>
+                            <th>Rule Identification</th>
+                            <th>Author & Source</th>
+                            <th>Format</th>
+                            <th class="text-end pe-4">Activity</th>
+                        </tr>
+                    </thead>
+                    <tbody v-if="rules.length > 0">
+                        <template v-for="rule in rules" :key="rule.id">
+                            <tr :class="{'row-selected': isRuleChecked(rule.id), 'row-expanded': expandedRows.has(rule.id)}">
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-link p-0" @click="toggleRow(rule.id)">
+                                        <i style="color: var(--text-color)" class="fas"
+                                           :class="expandedRows.has(rule.id) ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                                    </button>
+                                </td>
+                                <td class="text-center">
+                                    <div class="custom-checkbox">
+                                        <input type="checkbox" :checked="isRuleChecked(rule.id)"
+                                               @change="updateSelection(rule.id, $event.target.checked)"
+                                               :id="'rule-' + rule.id">
+                                        <label :for="'rule-' + rule.id"></label>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="fw-bold text-dark">[[ rule.title ]]</div>
+                                    <div class="x-small">UUID: [[ rule.uuid.substring(0,8) ]]...</div>
+                                </td>
+                                <td>
+                                    <div class="small fw-medium">[[ rule.author || 'Internal' ]]</div>
+                                    <div class="x-small text-primary">[[ rule.source || 'Default' ]]</div>
+                                </td>
+                                <td><span class="badge-format">[[ rule.format ]]</span></td>
+                                <td class="text-end pe-4 small">[[ rule.last_modif ]]</td>
+                            </tr>
+                            <tr v-if="expandedRows.has(rule.id)" class="detail-row">
+                                <td colspan="6" class="p-0 border-0">
+                                    <div class="detail-content p-4 animate__animated animate__fadeIn">
+                                        <div class="row g-3">
+                                            <div class="col-md-7">
+                                                <label class="x-small fw-bold text-uppercase">Description</label>
+                                                <p class="small mb-3">[[ rule.description || 'No description available.' ]]</p>
+                                                <div class="d-flex gap-2 flex-wrap">
+                                                    <div v-for="tag in (rule.tags || [])"
+                                                         class="badge border px-2 py-1">#[[ tag ]]</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-5 border-start">
+                                                <div class="ms-md-3">
+                                                    <span class="x-small fw-bold text-uppercase d-block">Full UUID</span>
+                                                    <code class="x-small text-break">[[ rule.uuid ]]</code>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                    <tbody v-else>
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-5">
+                                <i class="fas fa-search fa-2x d-block mb-2 opacity-25"></i>
+                                <span v-if="loading">Loading…</span>
+                                <span v-else>No rules found.</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <pagination-component
+                :current-page="currentPage"
+                :total-pages="totalPages"
+                @change-page="(p) => $refs.filterBar.fetchRules(p)">
+            </pagination-component>
+
+            <!-- Selection preview -->
+            <div v-if="selectedCount > 0"
+                 class="selection-preview-box mt-4 p-4 rounded-4 shadow-sm border-dashed">
+                <h6 class="mb-3 fw-bold">
+                    <i class="fas fa-clipboard-list me-2"></i>Selection Preview
+                </h6>
+                <div class="d-flex flex-wrap gap-2">
+                    <div v-if="isAllSelectedMode" class="selection-pill global shadow-sm">
+                        <i class="fas fa-globe me-2"></i>ALL [[ totalRules ]] RULES (Filtered)
+                    </div>
+                    <div v-if="!isAllSelectedMode"
+                         v-for="item in displayedSelection" :key="item.id"
+                         class="selection-pill manual shadow-sm">
+                        <span class="text-truncate" style="max-width:180px">[[ item.title ]]</span>
+                        <i class="fas fa-times ms-2 close-btn"
+                           @click="updateSelection(item.id, false)"></i>
+                    </div>
+                    <div v-if="selectedIds.size > 50 && !isAllSelectedMode"
+                         class="selection-pill info">
+                        +[[ selectedIds.size - 50 ]] others
+                    </div>
+                </div>
+            </div>
+        </div>
+        `,
+    };
+
+    // ── Main app ──────────────────────────────────────────────────────────────
+    createApp({
+        delimiters: ['[[', ']]'],
+        components: {
+            'job-tracker':        JobTracker,
+            'bulk-rule-selector': BulkRuleSelector,
+        },
+        setup() {
+            const csrfToken = '{{ csrf_token() }}';
+
+            // ── Tags ─────────────────────────────────────────────────────────
+            const allTags         = ref([]);
+            const selectedTags    = ref([]);
+            const tagSearch       = ref('');
+            const tagSourceFilter = ref('All');
+
+            const filteredTagList = computed(() => {
+                const q   = tagSearch.value.toLowerCase();
+                const src = tagSourceFilter.value;
+                return allTags.value.filter(t => {
+                    if (isTagSelected(t.id)) return false;
+                    if (src !== 'All' && t.source !== src) return false;
+                    return t.name.toLowerCase().includes(q);
+                }).slice(0, 80);
+            });
+
+            function isTagSelected(id)    { return selectedTags.value.some(t => t.id === id); }
+            function deselectTag(id)       { selectedTags.value = selectedTags.value.filter(t => t.id !== id); }
+            function toggleTagSelection(t) { isTagSelected(t.id) ? deselectTag(t.id) : selectedTags.value.push(t); }
+
+            // ── Job ──────────────────────────────────────────────────────────
+            const action          = ref('add');
+            const launching       = ref(false);
+            const activeJobUuid   = ref(null);
+            const runningJobCount = ref(0);
+
+            // ── Selection state — lue directement depuis le composant via ref ──
+            const selectorRef      = ref(null);
+            const selectionSummary = computed(() => {
+                const comp = selectorRef.value;
+                if (!comp) return { count: 0, mode: 'none' };
+                const sel = comp.getSelection();
+                return {
+                    count: sel.count,
+                    mode:  sel.isAllMode ? 'all matching' : 'manual pick',
+                };
+            });
+
+            function onSelectionReady(sel) {
+                // kept for compatibility but launchJob reads ref directly
+            }
+
+            // ── Loaders ──────────────────────────────────────────────────────
+            async function loadTags() {
+                const res  = await fetch('/tags/get_all_tags');
+                const data = await res.json();
+                if (res.ok) allTags.value = data.tags || [];
+            }
+
+            async function loadRunningJobs() {
+                const res  = await fetch('/jobs/get_jobs?status=running');
+                const data = await res.json();
+                if (res.ok) runningJobCount.value = data.length;
+            }
+
+            // ── Launch ───────────────────────────────────────────────────────
+            async function launchJob() {
+                if (launching.value) return;
+
+                const comp = selectorRef.value;
+                if (!comp) {
+                    create_message('Component not ready.', 'danger-subtle');
+                    return;
+                }
+
+                // use explicit method to avoid Set reactivity issues
+                const sel = comp.getSelection();
+
+                if (sel.count === 0) {
+                    create_message('No rules selected. Use the table on the left.', 'warning-subtle');
+                    return;
+                }
+                if (selectedTags.value.length === 0) {
+                    create_message('No tags selected.', 'warning-subtle');
+                    return;
+                }
+
+                launching.value = true;
+
+                const jobType = action.value === 'add'
+                    ? 'bulk_add_tag_to_rules'
+                    : 'bulk_remove_tag_from_rules';
+
+                const label = `${action.value === 'add' ? 'Add' : 'Remove'} `
+                    + `${selectedTags.value.length} tag(s) on `
+                    + `${sel.count.toLocaleString()} rule(s) `
+                    + `(${sel.isAllMode ? 'all matching' : 'manual pick'})`;
+
+                const filtersPayload = sel.isAllMode
+                    ? { ...sel.filters, excluded_ids: sel.excludedIds }
+                    : { rule_ids: sel.selectedIds };
+
+                console.log('[launchJob] sel=', sel, 'filtersPayload=', filtersPayload);
+
+                try {
+                    const res  = await fetch('/jobs/create', {
+                        method:  'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken':  csrfToken,
+                        },
+                        body: JSON.stringify({
+                            job_type: jobType,
+                            payload:  {
+                                tag_ids: selectedTags.value.map(t => t.id),
+                                filters: filtersPayload,
+                            },
+                            label,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        activeJobUuid.value = data.job.uuid;
+                        create_message('Job queued! Processing in background…', 'success-subtle');
+                        loadRunningJobs();
+                    } else {
+                        create_message(data.error || 'Failed to create job.', 'danger-subtle');
+                    }
+                } finally {
+                    launching.value = false;
+                }
+            }
+
+            function onJobDone(job) {
+                create_message(`Done! ${job.done.toLocaleString()} rules processed.`, 'success-subtle');
+                loadRunningJobs();
+            }
+            function onJobFailed(job) {
+                create_message(`Job failed: ${job.error}`, 'danger-subtle');
+                loadRunningJobs();
+            }
+
+            onMounted(() => { loadTags(); loadRunningJobs(); });
+
+            return {
+                selectorRef,
+                allTags, selectedTags, tagSearch, tagSourceFilter, filteredTagList,
+                action, launching, activeJobUuid, runningJobCount,
+                selectionSummary,
+                isTagSelected, deselectTag, toggleTagSelection,
+                onSelectionReady, launchJob, onJobDone, onJobFailed,
+                getTextColor,
+            };
+        }
+    }).mount('#main-container');
+</script>
+{% endblock %}
