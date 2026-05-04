@@ -1,9 +1,14 @@
 <div id="app">
-   <nav class="navbar navbar-expand-lg  sticky-top main-navbar shadow-sm py-2" v-cloak>
-      <div class=" container-fluid px-4">
+   <nav class="navbar navbar-expand-lg sticky-top main-navbar shadow-sm py-2" v-cloak>
+      <div class="container-fluid px-4">
 
+         <!-- ── Logo ── -->
          <a href="/" class="navbar-brand d-flex align-items-center transition-transform logo">
-            <img src="{{ url_for('static', filename='image/logo.png') }}" height="75" alt="RULEZET Logo">
+            <img src="{{ url_for('static', filename='image/logo.png') }}" 
+                  class="logo-light" height="75" alt="RULEZET Logo">
+            
+            <img src="{{ url_for('static', filename='image/logo_dark.png') }}" 
+                  class="logo-dark" height="75" alt="RULEZET Logo">
          </a>
 
          <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse"
@@ -12,334 +17,260 @@
          </button>
 
          <div class="collapse navbar-collapse" id="navbarContent">
-            <ul class=" navbar-nav mx-auto align-items-center gap-1">
+            <ul class="navbar-nav mx-auto align-items-center gap-1">
 
-               <li class="nav-item dropdown ">
+               <!-- ── Bundles ── -->
+               <li class="nav-item dropdown">
                   <a class="nav-link dropdown-toggle custom-nav-link {% if request.path.startswith('/bundle') %}active{% endif %} fw-bold"
-                     href="#" id="bundleDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                     <i class="fa-solid fa-box fa-fw me-1 text-primary"></i> Bundle
+                     href="#" role="button" data-bs-toggle="dropdown">
+                     <i class="fa-solid fa-box fa-fw me-1 text-primary"></i>Bundle
                   </a>
-                  <ul class="dropdown-menu border-0 shadow-lg animate slideIn" aria-labelledby="bundleDropdown">
-                     <li><a href="/bundle/list"
-                           class="dropdown-item py-2 {% if request.path == '/bundle/list' %}active{% endif %}"><i
-                              class="fa-solid fa-rocket "></i> Explore Bundles</a></li>
+                  <ul class="dropdown-menu border-0 shadow-lg animate slideIn">
+                     <li><a href="/bundle/list" class="dropdown-item py-2 {% if request.path == '/bundle/list' %}active{% endif %}">
+                           <i class="fa-solid fa-rocket me-2"></i>Explore Bundles</a></li>
                      {% if current_user.is_authenticated %}
-                     <li><a href="/bundle/create"
-                           class="dropdown-item py-2 {% if request.path == '/bundle/create' %}active{% endif %}"><i
-                              class="fa-solid fa-folder-plus"></i> Create Bundles</a></li>
+                     <li><a href="/bundle/create" class="dropdown-item py-2 {% if request.path == '/bundle/create' %}active{% endif %}">
+                           <i class="fa-solid fa-folder-plus me-2"></i>Create Bundle</a></li>
                      {% endif %}
-
                   </ul>
                </li>
 
+               <!-- ── Security Rules ── -->
                <li class="nav-item dropdown">
-                  <a class="nav-link dropdown-toggle custom-nav-link fw-bold {% if request.path.startswith('/rule') and '/github' not in request.path  and '/admin' not in request.path%}active{% endif %}"
-                     href="#" id="rulesDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                     <i class="fa-solid fa-shield-halved fa-fw me-1 text-primary"></i> Security Rules
+                  <a class="nav-link dropdown-toggle custom-nav-link fw-bold {% if request.path.startswith('/rule') and '/github' not in request.path and '/admin' not in request.path %}active{% endif %}"
+                     href="#" role="button" data-bs-toggle="dropdown">
+                     <i class="fa-solid fa-shield-halved fa-fw me-1 text-primary"></i>Security Rules
                   </a>
-                  <ul class="dropdown-menu border-0 shadow-lg animate slideIn" aria-labelledby="rulesDropdown">
+                  <ul class="dropdown-menu border-0 shadow-lg animate slideIn">
                      <li><a class="dropdown-item py-2 {% if request.path == '/rule/rules_list' %}active{% endif %}"
-                           href="/rule/rules_list"><i class="fa-solid fa-rocket"></i> Explore Rules </a>
-                     </li>
+                           href="/rule/rules_list"><i class="fa-solid fa-rocket me-2"></i>Explore Rules</a></li>
                      <li><a class="dropdown-item py-2 {% if request.path == '/rule/create_rule' %}active{% endif %}"
-                           href="/rule/create_rule"><i class="fa-solid fa-file-circle-plus"></i> Add Rules</a></li>
+                           href="/rule/create_rule"><i class="fa-solid fa-file-circle-plus me-2"></i>Add Rules</a></li>
+
                      {% if current_user.is_authenticated %}
+                     <li><hr class="dropdown-divider"></li>
                      <li>
-                        <a class="dropdown-item py-2 position-relative d-flex justify-content-between align-items-center {% if request.path == '/rule/rule_propose_edit' %}active{% endif %}"
+                        <a class="dropdown-item py-2 d-flex justify-content-between align-items-center {% if request.path == '/rule/rule_propose_edit' %}active{% endif %}"
                            href="/rule/rule_propose_edit">
-                           <span><i class="fa-solid fa-lightbulb fa-fw"></i> Proposal Rules</span>
-                           <template v-if="changes_to_validate > 0">
-                              <span class="badge rounded-pill bg-danger ms-2">[[ changes_to_validate ]]</span>
-                           </template>
+                           <span><i class="fa-solid fa-lightbulb fa-fw me-2"></i>Proposals</span>
+                           <span v-if="changes_to_validate > 0" class="badge rounded-pill bg-danger ms-2">[[ changes_to_validate ]]</span>
                         </a>
                      </li>
-
                      <li><a class="dropdown-item py-2 {% if request.path == '/rule/bad_rules_summary' %}active{% endif %}"
-                           href="/rule/bad_rules_summary"><i class="fa-solid fa-tags fa-fw me-2 text-muted"></i>Bad
-                           Rules</a></li>
+                           href="/rule/bad_rules_summary"><i class="fa-solid fa-bug fa-fw me-2 text-muted"></i>Bad Rules</a></li>
 
                      {% if not current_user.is_admin() %}
                      <li>
-                        <a href="/admin/request"
-                           class="dropdown-item py-2 position-relative d-flex justify-content-between align-items-center {% if request.path == '/admin/request' %}active{% endif %}">
+                        <a href="/admin/request" class="dropdown-item py-2 d-flex justify-content-between align-items-center">
                            <span><i class="fa-solid fa-envelope fa-fw me-2 text-muted"></i>Ownership Requests</span>
-                           <template v-if="requests_to_validate > 0">
-                              <span class="badge rounded-pill bg-danger ms-2">[[ requests_to_validate ]]</span>
-                           </template>
+                           <span v-if="requests_to_validate > 0" class="badge rounded-pill bg-danger ms-2">[[ requests_to_validate ]]</span>
                         </a>
                      </li>
+                     {% else %}
+                     <li><a href="/admin/similar_rules" class="dropdown-item py-2">
+                           <i class="fa-solid fa-link fa-fw me-2 text-muted"></i>Similar Rules</a></li>
+                     <li><a href="/rule/admin/rules_reported" class="dropdown-item py-2">
+                           <i class="fa-solid fa-triangle-exclamation fa-fw me-2 text-muted"></i>Reported Rules</a></li>
                      {% endif %}
                      {% endif %}
                   </ul>
                </li>
 
+               <!-- ── GitHub ── -->
                {% if current_user.is_authenticated %}
                <li class="nav-item dropdown">
                   <a class="nav-link dropdown-toggle custom-nav-link fw-bold {% if '/github' in request.path %}active{% endif %}"
-                     href="#" id="githubDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                     <i class="fa-brands fa-github fa-fw me-1"></i> Github
-                  </a>
-                  <ul class="dropdown-menu border-0 shadow-lg animate slideIn" aria-labelledby="githubDropdown">
-                     <li><a class="dropdown-item py-2 {% if request.path == '/rule/github/list_github_url' %}active{% endif %}"
-                           href="/rule/github/list_github_url"><i
-                              class="fa-solid fa-list fa-fw me-2 text-muted"></i>Github List</a></li>
-                     <li><a class="dropdown-item py-2 {% if request.path == '/rule/github/history_github_importer' %}active{% endif %}"
-                           href="/rule/github/history_github_importer"><i
-                              class="fa-solid fa-bars-progress fa-fw me-2 text-muted"></i>Manage Github</a></li>
-                     <li><a class="dropdown-item py-2 {% if request.path == '/rule/create_rule?tab=github' %}active{% endif %}"
-                           href="/rule/create_rule?tab=github"><i
-                              class="fa-solid fa-file-import fa-fw me-2 text-muted"></i>Import Rules</a></li>
-                     <li>
-                        <a class="dropdown-item py-2 d-flex justify-content-between align-items-center {% if request.path == '/rule/update_github/update_rules_from_github' %}active{% endif %}"
-                           href="/rule/github/update_github/update_rules_from_github">
-                           <span><i class="fa-solid fa-rotate fa-fw me-2 text-muted"></i>Update Rules</span>
-                           <template v-if="update_to_validate > 0">
-                              <span class="badge rounded-pill bg-danger ms-2">[[ update_to_validate ]]</span>
-                           </template>
-                        </a>
-                     </li>
-                  </ul>
-               </li>
-               {% endif %}
-
-               {% if current_user.is_authenticated and current_user.is_admin() %}
-               <li class="nav-item dropdown px-2">
-                  <a class="nav-link dropdown-toggle custom-nav-link fw-bold {% if '/admin' in request.path %}active{% endif %}"
-                     href="#" data-bs-toggle="dropdown">
-                     <i class="fa-solid fa-lock fa-fw me-1 text-danger"></i> Admin
+                     href="#" role="button" data-bs-toggle="dropdown">
+                     <i class="fa-brands fa-github fa-fw me-1"></i>Github
                   </a>
                   <ul class="dropdown-menu border-0 shadow-lg animate slideIn">
-                     <li><a href="/account/admin/all_users"
-                           class="dropdown-item py-2 {% if request.path == '/account/admin/all_users' %}active{% endif %}"><i
-                              class="fa-solid fa-users fa-fw me-2 text-muted"></i>Users List</a></li>
-                     <li><a href="/rule/admin/rules_reported"
-                           class="dropdown-item py-2 {% if request.path == '/rule/admin/rules_reported' %}active{% endif %}"><i
-                              class="fa-solid fa-triangle-exclamation fa-fw me-2 text-muted"></i>Reported Rules</a></li>
+                     <li><a class="dropdown-item py-2 {% if request.path == '/rule/github/list_github_url' %}active{% endif %}"
+                           href="/rule/github/list_github_url"><i class="fa-solid fa-list fa-fw me-2 text-muted"></i>Github List</a></li>
+                     <li><a class="dropdown-item py-2 {% if request.path == '/rule/github/history_github_importer' %}active{% endif %}"
+                           href="/rule/github/history_github_importer"><i class="fa-solid fa-bars-progress fa-fw me-2 text-muted"></i>Manage Github</a></li>
+                     <li><a class="dropdown-item py-2" href="/rule/create_rule?tab=github">
+                           <i class="fa-solid fa-file-import fa-fw me-2 text-muted"></i>Import Rules</a></li>
                      <li>
-                        <a href="/admin/request"
-                           class="dropdown-item py-2 d-flex justify-content-between align-items-center {% if request.path == '/admin/request' %}active{% endif %}">
-                           <span><i class="fa-solid fa-envelope fa-fw me-2 text-muted"></i>Ownership Requests</span>
-                           <template v-if="requests_to_validate > 0">
-                              <span class="badge rounded-pill bg-danger">[[ requests_to_validate ]]</span>
-                           </template>
+                        <a class="dropdown-item py-2 d-flex justify-content-between align-items-center"
+                           href="/rule/github/update_github/update_rules_from_github">
+                           <span><i class="fa-solid fa-rotate fa-fw me-2 text-muted"></i>Update Rules</span>
+                           <span v-if="update_to_validate > 0" class="badge rounded-pill bg-danger ms-2">[[ update_to_validate ]]</span>
                         </a>
-                     </li>
-                     <li><a class="dropdown-item py-2 {% if request.path == '/rule/admin/manage_format_rule' %}active{% endif %}"
-                           href="/rule/admin/manage_format_rule"><i
-                              class="fa-solid fa-file-code fa-fw me-2 text-muted"></i>Manage Format</a></li>
-                     <li>
-                        <!-- tags-->
-                        <a href="/tags/admin/list"
-                           class="dropdown-item py-2 {% if request.path == '/tags/admin/list' %}active{% endif %}"><i
-                              class="fa-solid fa-tags fa-fw me-2 text-muted"></i>Manage Tags</a>
-                     </li>
-                     <!-- <li>
-                        <a href="/admin/get_backups"
-                           class="dropdown-item py-2 {% if request.path == '/admin/get_backups' %}active{% endif %}"><i
-                              class="fa-solid fa-database fa-fw me-2 text-muted"></i>Backups</a>
-                     </li> -->
-                     <li>
-                        <a href="/admin/similar_rules"
-                           class="dropdown-item py-2 {% if request.path == '/admin/similar_rules' %}active{% endif %}"><i
-                              class="fa-solid fa-link fa-fw me-2 text-muted"></i>Similar Rules</a>
                      </li>
                   </ul>
                </li>
                {% endif %}
+
+               <!-- ── Admin ── -->
+               {% if current_user.is_authenticated and current_user.is_admin() %}
+               <li class="nav-item dropdown px-2">
+                  <a class="nav-link dropdown-toggle custom-nav-link fw-bold {% if '/admin' in request.path or request.path.startswith('/tags/admin') or request.path.startswith('/jobs') %}active{% endif %}"
+                     href="#" data-bs-toggle="dropdown">
+                     <i class="fa-solid fa-lock fa-fw me-1 text-danger"></i>Admin
+                  </a>
+                  <ul class="dropdown-menu border-0 shadow-lg animate slideIn">
+
+                     <!-- Users & Requests -->
+                     <li><a href="/account/admin/all_users" class="dropdown-item py-2 {% if request.path == '/account/admin/all_users' %}active{% endif %}">
+                           <i class="fa-solid fa-users fa-fw me-2 text-muted"></i>Users</a></li>
+                     <li>
+                        <a href="/admin/request" class="dropdown-item py-2 d-flex justify-content-between align-items-center {% if request.path == '/admin/request' %}active{% endif %}">
+                           <span><i class="fa-solid fa-envelope fa-fw me-2 text-muted"></i>Ownership Requests</span>
+                           <span v-if="requests_to_validate > 0" class="badge rounded-pill bg-danger">[[ requests_to_validate ]]</span>
+                        </a>
+                     </li>
+
+                     <li><hr class="dropdown-divider"></li>
+
+                     <!-- Rules management -->
+                     <li><a class="dropdown-item py-2 {% if request.path == '/rule/admin/manage_format_rule' %}active{% endif %}"
+                           href="/rule/admin/manage_format_rule"><i class="fa-solid fa-file-code fa-fw me-2 text-muted"></i>Manage Formats</a></li>
+                     <li><a href="/tags/admin/list" class="dropdown-item py-2 {% if request.path.startswith('/tags/admin') %}active{% endif %}">
+                           <i class="fa-solid fa-tags fa-fw me-2 text-muted"></i>Manage Tags</a></li>
+
+                     <li><hr class="dropdown-divider"></li>
+
+                     <!-- Bulk & Jobs -->
+                     <li><a href="/rule/bulk_tag" class="dropdown-item py-2 {% if request.path == '/rule/bulk_tag' %}active{% endif %}">
+                           <i class="fa-solid fa-tag fa-fw me-2 text-muted"></i>Bulk Tag Rules</a></li>
+                     <li>
+                        <a href="/jobs/list" class="dropdown-item py-2 d-flex justify-content-between align-items-center {% if request.path == '/jobs/list' %}active{% endif %}">
+                           <span><i class="fa-solid fa-tasks fa-fw me-2 text-muted"></i>Background Jobs</span>
+                           <span v-if="running_jobs_count > 0" class="badge rounded-pill bg-primary ms-2">[[ running_jobs_count ]]</span>
+                        </a>
+                     </li>
+
+                  </ul>
+               </li>
+               {% endif %}
+
             </ul>
 
+            <!-- ── Right: search + notifications + profile ── -->
             <div class="d-flex align-items-center gap-3 ms-auto">
-               <button
-                  class="btn btn-search-trigger d-none d-xl-flex align-items-center rounded-pill px-3 py-1 home-btn"
-                  data-bs-toggle="offcanvas" href="#offcanvasSearch" @click="initSearch()"> <i
-                     class="fa-solid fa-magnifying-glass me-2 text-muted"></i>
+
+               <button class="btn btn-search-trigger d-none d-xl-flex align-items-center rounded-pill px-3 py-1 home-btn"
+                  data-bs-toggle="offcanvas" href="#offcanvasSearch" @click="initSearch()">
+                  <i class="fa-solid fa-magnifying-glass me-2 text-muted"></i>
                   <span class="text-muted small">Search rules...</span>
                </button>
 
+               <!-- Notifications bell -->
                <div class="dropdown">
-                  <a class="position-relative p-2 text-dark transition-hover" href="#" id="notificationsDropdown"
-                     role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  <a class="position-relative p-2 text-dark transition-hover" href="#" role="button" data-bs-toggle="dropdown">
                      <i class="fa-solid fa-bell fs-5"></i>
                      <span v-if="total_notifications > 0"
                         class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-white rounded-circle pulse-alert"></span>
                   </a>
-
-                  <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2 mt-3"
-                     style="min-width: 280px; color: var(--color-text)">
+                  <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2 mt-3" style="min-width: 280px;">
                      <li class="dropdown-header fw-bold text-dark px-3 py-2">Quick Actions</li>
-                     <li>
-                        <hr class="dropdown-divider">
-                     </li>
-
+                     <li><hr class="dropdown-divider"></li>
                      <template v-if="total_notifications === 0">
-                        <li class="text-center text-muted small py-3">All caught up!
-                        </li>
+                        <li class="text-center text-muted small py-3">All caught up!</li>
                      </template>
-
                      <template v-else>
                         <li v-if="requests_to_validate > 0">
-                           <a href="/admin/request"
-                              class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
+                           <a href="/admin/request" class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
                               <span class="small"><i class="fa-solid fa-envelope me-2 text-primary"></i>Requests</span>
                               <span class="badge bg-danger rounded-pill">[[ requests_to_validate ]]</span>
                            </a>
                         </li>
                         <li v-if="changes_to_validate > 0">
-                           <a href="/rule/rule_propose_edit"
-                              class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
+                           <a href="/rule/rule_propose_edit" class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
                               <span class="small"><i class="fa-solid fa-lightbulb me-2 text-warning"></i>Changes</span>
                               <span class="badge bg-danger rounded-pill">[[ changes_to_validate ]]</span>
                            </a>
                         </li>
                         <li v-if="repport_to_validate > 0">
-                           <a href="/rule/admin/rules_reported"
-                              class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
-                              <span class="small"><i
-                                    class="fa-solid fa-triangle-exclamation me-2 text-danger"></i>Reports</span>
+                           <a href="/rule/admin/rules_reported" class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
+                              <span class="small"><i class="fa-solid fa-triangle-exclamation me-2 text-danger"></i>Reports</span>
                               <span class="badge bg-danger rounded-pill">[[ repport_to_validate ]]</span>
                            </a>
                         </li>
                         <li v-if="update_to_validate > 0">
-                           <a href="/rule/update_github/update_rules_from_github"
-                              class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
+                           <a href="/rule/update_github/update_rules_from_github" class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
                               <span class="small"><i class="fa-solid fa-rotate me-2 text-info"></i>Updates</span>
                               <span class="badge bg-danger rounded-pill">[[ update_to_validate ]]</span>
                            </a>
                         </li>
-                        <!-- update_import-->
                         <li v-if="update_import_to_validate > 0">
-                           <a href="/rule/history_github_importer"
-                              class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
-                              <span class="small">
-                                 <!-- Update or import in progress of github repo-->
-                                 <i class="fa-solid fa-bars-progress me-2 text-dark"></i>Updates/Imports in progress
-                              </span>
+                           <a href="/rule/history_github_importer" class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
+                              <span class="small"><i class="fa-solid fa-bars-progress me-2 text-dark"></i>Imports in progress</span>
                               <span class="badge bg-danger rounded-pill">[[ update_import_to_validate ]]</span>
+                           </a>
+                        </li>
+                        <li v-if="running_jobs_count > 0">
+                           <a href="/jobs/list" class="dropdown-item rounded d-flex justify-content-between align-items-center py-2">
+                              <span class="small"><i class="fa-solid fa-tasks me-2 text-primary"></i>Background Jobs</span>
+                              <span class="badge bg-primary rounded-pill">[[ running_jobs_count ]]</span>
                            </a>
                         </li>
                      </template>
                   </ul>
                </div>
 
+               <!-- Profile -->
                <div class="dropdown">
-                  <a class="btn btn-profile d-flex align-items-center gap-2 rounded-pill ps-1 pe-3 py-1" href="#"
-                     role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  <a class="btn btn-profile d-flex align-items-center gap-2 rounded-pill ps-1 pe-3 py-1"
+                     href="#" role="button" data-bs-toggle="dropdown">
                      <div class="avatar-circle">
-                        {% if current_user.is_authenticated %}
-                        {{ current_user.get_first_name()[0].upper() }}
-                        {% else %}
-                        <i class="fa-solid fa-user"></i>
-                        {% endif %}
+                        {% if current_user.is_authenticated %}{{ current_user.get_first_name()[0].upper() }}
+                        {% else %}<i class="fa-solid fa-user"></i>{% endif %}
                      </div>
                      <span class="fw-bold small d-none d-sm-inline">
-                        {% if current_user.is_authenticated %}{{ current_user.get_first_name() }}{% else %}Profile{%
-                        endif %}
+                        {% if current_user.is_authenticated %}{{ current_user.get_first_name() }}{% else %}Profile{% endif %}
                      </span>
                   </a>
                   <ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg mt-3 p-2">
                      {% if current_user.is_authenticated %}
-                     <li><a href="/account/"
-                           class="dropdown-item rounded py-2 {% if request.path == '/account/' %}active{% endif %}"><i
-                              class="fa-solid fa-user-circle me-2 text-muted"></i>Profile</a></li>
-                     <li><a href="/rule/owner_rules"
-                           class="dropdown-item rounded py-2 {% if request.path == '/rule/owner_rules' %}active{% endif %}"><i
-                              class="fa-solid fa-user-shield me-2 text-muted"></i>My Rules</a></li>
-                     <li><a href="/tags/my_tags"
-                           class="dropdown-item rounded py-2 {% if request.path == '/tags/my_tags' %}active{% endif %}"><i
-                              class="fa-solid fa-tags me-2 text-muted"></i>My Tags</a></li>
-                     <li><a class="dropdown-item py-2 {% if request.path == '/account/contributor' %}active{% endif %} "
-                           href="/account/contributor"><i
-                              class="fa-solid fa-user-group fa-fw me-2 text-muted"></i>Contributors</a></li>
-                     <hr class="dropdown-divider">
-                     </li>
-                     <li><a href="/account/logout" class="dropdown-item rounded py-2 text-danger fw-bold"><i
-                              class="fa-solid fa-power-off me-2"></i>Logout</a></li>
+                     <li><a href="/account/" class="dropdown-item rounded py-2">
+                           <i class="fa-solid fa-user-circle me-2 text-muted"></i>Profile</a></li>
+                     <li><a href="/rule/owner_rules" class="dropdown-item rounded py-2">
+                           <i class="fa-solid fa-user-shield me-2 text-muted"></i>My Rules</a></li>
+                     <li><a href="/tags/my_tags" class="dropdown-item rounded py-2">
+                           <i class="fa-solid fa-tags me-2 text-muted"></i>My Tags</a></li>
+                     <li><a href="/account/contributor" class="dropdown-item rounded py-2">
+                           <i class="fa-solid fa-user-group fa-fw me-2 text-muted"></i>Contributors</a></li>
+                     <li><hr class="dropdown-divider"></li>
+                     <li><a href="/account/logout" class="dropdown-item rounded py-2 text-danger fw-bold">
+                           <i class="fa-solid fa-power-off me-2"></i>Logout</a></li>
                      {% else %}
-                     <li><a href="/account/register"
-                           class="dropdown-item rounded py-2 fw-bold {% if request.path == '/account/register' %}active{% endif %}">Register</a>
-                     </li>
-                     <li><a href="/account/login"
-                           class="dropdown-item rounded py-2 {% if request.path == '/account/login' %}active{% endif %}">Login</a>
-                     </li>
+                     <li><a href="/account/register" class="dropdown-item rounded py-2 fw-bold">Register</a></li>
+                     <li><a href="/account/login" class="dropdown-item rounded py-2">Login</a></li>
                      {% endif %}
                   </ul>
                </div>
+
             </div>
          </div>
       </div>
    </nav>
-   <div class="offcanvas offcanvas-end border-0 shadow-lg" tabindex="-1" id="offcanvasSearch"
-      aria-labelledby="offcanvasSearchLabel" style="width: 700px; background-color: var(--bg-color);">
 
-      <div class="offcanvas-header  border-bottom py-4 px-4">
+   <!-- ── Search offcanvas ── -->
+   <div class="offcanvas offcanvas-end border-0 shadow-lg" tabindex="-1" id="offcanvasSearch"
+      style="width: 700px; background-color: var(--bg-color);">
+      <div class="offcanvas-header border-bottom py-4 px-4">
          <div class="d-flex align-items-center">
             <div class="bg-primary-subtle p-2 rounded-3 me-3">
                <i class="fa-solid fa-magnifying-glass text-primary fs-5"></i>
             </div>
             <div>
-               <h5 id="offcanvasSearchLabel" class="fw-bold mb-0 ">Search Rules</h5>
-               <p class="text-muted">Find specific security detections</p>
+               <h5 class="fw-bold mb-0">Search Rules</h5>
+               <p class="text-muted mb-0">Find specific security detections</p>
             </div>
          </div>
-         <button type="button" class="btn-close shadow-none" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+         <button type="button" class="btn-close shadow-none" data-bs-dismiss="offcanvas"></button>
       </div>
-
       <div class="offcanvas-body p-4">
-         <!-- <div class="search-container  p-3 rounded-4 shadow-sm mb-4">
-            <div class="search-bar-container mb-4">
-               <div class="input-group input-group-lg search-group">
-                  <span class="input-group-text bg-white border-end-0 ps-4">
-                     <i class="fa-solid fa-magnifying-glass text-primary opacity-75"></i>
-                  </span>
-                  <input type="text" v-model="searchQuery" @input="onSearchInput" id="searchInputCaneva"
-                     @keyup.enter="onEnterKey" class="form-control border-start-0 ps-2 shadow-none fs-6 py-3"
-                     placeholder="Search by keywords, CVE, or tags...">
-
-                  <span class="input-group-text bg-white border-start-0 pe-4" v-if="searchQuery"
-                     @click="searchQuery = ''; fetchRules()" style="cursor: pointer;">
-                     <i class="fa-solid fa-xmark text-muted small"></i>
-                  </span>
-               </div>
-            </div>
-
-            <div class="row g-3 mb-4">
-               <div class="col-md-3">
-                  <label class="small fw-bold text-muted mb-1 ms-1">Sort by</label>
-                  <select v-model="sortBy" class="form-select form-select-sm rounded-pill shadow-none"
-                     @change="fetchRules()">
-                     <option value="newest">Newest</option>
-                     <option value="oldest">Oldest</option>
-                     <option value="most_likes">Most Liked</option>
-                     <option value="least_likes">Least Liked</option>
-                  </select>
-               </div>
-
-               <div class="col-md-3">
-                  <label class="small fw-bold text-muted mb-1 ms-1">Type</label>
-                  <select v-model="ruleType" class="form-select form-select-sm rounded-pill shadow-none"
-                     @change="fetchRules()">
-                     <option value="">All Types</option>
-                     <option v-for="format in rules_formats" :value="format.name" :key="format.id">
-                        [[ format.name ]]
-                     </option>
-                  </select>
-               </div>
-            </div>
-         </div> -->
-         <!-- <rule-filter-bar ref="filterBar" api-endpoint="/rule/get_rules_page_filter" @update:results="onRulesUpdated"
-            :current-user-is-authenticated="'{{current_user.is_authenticated}}'" @loading="search_is_loading = $event"
-            :auto-fetch="false" :csrf-token="'{{ csrf_token() }}'">
-         </rule-filter-bar> -->
          <template v-if="showSearchContent">
-
-            <rule-filter-bar ref="filterBar" api-endpoint="/rule/get_rules_page_filter" @update:results="onRulesUpdated"
+            <rule-filter-bar ref="filterBar"
+               api-endpoint="/rule/get_rules_page_filter"
+               @update:results="onRulesUpdated"
                :current-user-is-authenticated="'{{current_user.is_authenticated}}'"
-               @loading="search_is_loading = $event" :auto-fetch="false" :csrf-token="'{{ csrf_token() }}'">
+               @loading="search_is_loading = $event"
+               :auto-fetch="false"
+               :csrf-token="'{{ csrf_token() }}'">
             </rule-filter-bar>
-
-            <div class="results-wrapper">
-            </div>
-
          </template>
 
          <div class="results-wrapper">
@@ -353,13 +284,10 @@
 
             <template v-if="search_is_loading">
                <div class="text-center py-5">
-                  <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
-                     <span class="visually-hidden">Loading...</span>
-                  </div>
+                  <div class="spinner-border text-primary" role="status" style="width:3rem;height:3rem;"></div>
                   <p class="mt-3 text-muted">Searching the database...</p>
                </div>
             </template>
-
             <template v-else>
                <div v-if="rules_list && rules_list.length > 0" class="results-list">
                   <pagination-component :current-page="current_page" :total-pages="total_pages"
@@ -367,33 +295,28 @@
 
                   <a v-for="rule in rules_list" :key="rule.id" :href="`/rule/detail_rule/${rule.id}`"
                      class="rule-card d-flex align-items-start p-3 mb-3 text-decoration-none" @click.stop>
-
                      <div class="flex-shrink-0 me-3">
                         <div class="rule-icon-box rounded-3 d-flex align-items-center justify-content-center shadow-sm">
                            <i class="fa-solid fa-shield-halved"></i>
                         </div>
                      </div>
-
                      <div class="flex-grow-1 min-width-0">
                         <div class="d-flex justify-content-between align-items-start mb-1">
                            <h6 class="mb-0 fw-bold rule-title text-truncate">[[ rule.title ]]</h6>
                            <span class="badge rule-type-badge ms-2">[[ rule.type ]]</span>
                         </div>
-
                         <p class="rule-description mb-2 text-truncate-2">[[ rule.description ]]</p>
-
                         <div class="d-flex flex-wrap align-items-center gap-2">
                            <span class="badge format-badge">
                               <i class="fa-solid fa-file-code me-1"></i>[[ rule.format ]]
                            </span>
                            <div @click.stop class="vuln-list-inline">
-                              <vulnerability-displays-list object-type="rule" :object-id="rule.id" :max-visible="2"
-                                 @click.stop>
+                              <vulnerability-displays-list object-type="rule" :object-id="rule.id"
+                                 :max-visible="2" @click.stop>
                               </vulnerability-displays-list>
                            </div>
                         </div>
                      </div>
-
                      <div class="ms-3 align-self-center d-none d-md-block">
                         <i class="fa-solid fa-chevron-right text-muted opacity-50"></i>
                      </div>
@@ -402,7 +325,6 @@
                   <pagination-component :current-page="current_page" :total-pages="total_pages"
                      @change-page="changePage"></pagination-component>
                </div>
-
                <div v-else class="text-center py-5">
                   <div class="mb-3 opacity-25">
                      <i class="fa-solid fa-box-open fa-4x" style="color: var(--color-text)"></i>
@@ -419,165 +341,119 @@
 <script type="module">
    const { createApp, ref, onMounted, computed } = Vue
    import VulnerabilityDisplaysList from '/static/js/vulnerability/vulnerabilityDisplayList.js';
-   import RuleFilterBar from '/static/js/rule/ruleFilterBar.js';
-   import PaginationComponent from '/static/js/rule/paginationComponent.js';
+   import RuleFilterBar             from '/static/js/rule/ruleFilterBar.js';
+   import PaginationComponent       from '/static/js/rule/paginationComponent.js';
+
    createApp({
       delimiters: ['[[', ']]'],
       components: {
          'vulnerability-displays-list': VulnerabilityDisplaysList,
-         'rule-filter-bar': RuleFilterBar,
-         'pagination-component': PaginationComponent
+         'rule-filter-bar':             RuleFilterBar,
+         'pagination-component':        PaginationComponent,
       },
       setup() {
 
-         /**
-          *    ###################
-          *    #  Notification   #
-          *    ###################
-          * */
-
-         const requests_to_validate = ref(0)
+         // ── Notification counters ───────────────────────────────────────────
+         const requests_to_validate      = ref(0)
          const update_import_to_validate = ref(0)
-         const changes_to_validate = ref(0)
-         const repport_to_validate = ref(0)
-         const update_to_validate = ref(0)
+         const changes_to_validate       = ref(0)
+         const repport_to_validate       = ref(0)
+         const update_to_validate        = ref(0)
+         const running_jobs_count        = ref(0)
+
          const total_notifications = computed(() =>
-            Number(requests_to_validate.value || 0) +
-            Number(changes_to_validate.value || 0) +
-            Number(repport_to_validate.value || 0) +
-            Number(update_to_validate.value || 0) +
-            Number(update_import_to_validate.value || 0)
+            Number(requests_to_validate.value      || 0) +
+            Number(changes_to_validate.value       || 0) +
+            Number(repport_to_validate.value       || 0) +
+            Number(update_to_validate.value        || 0) +
+            Number(update_import_to_validate.value || 0) +
+            Number(running_jobs_count.value        || 0)
          )
+
          async function getNbRequestAdmin() {
             const res = await fetch('/request_to_check')
-            const data = await res.json()
-            requests_to_validate.value = data.count || 0
+            requests_to_validate.value = (await res.json()).count || 0
          }
-
          async function getNbChanges() {
             const res = await fetch('/rule/change_to_check')
-            const data = await res.json()
-            changes_to_validate.value = data.count || 0
+            changes_to_validate.value = (await res.json()).count || 0
          }
-
          async function getNbRepport() {
             const res = await fetch('/rule/repport_to_check')
-            const data = await res.json()
-            repport_to_validate.value = data.count || 0
+            repport_to_validate.value = (await res.json()).count || 0
          }
-
          async function getNbUpdate() {
             const res = await fetch('/rule/update_to_check')
-            const data = await res.json()
-            update_to_validate.value = data.count || 0
+            update_to_validate.value = (await res.json()).count || 0
          }
-
          async function getNbUpdateImport() {
-            if ("{{ current_user.is_anonymous()}}") return
-            const res = await fetch('/rule/import_get_session_running')
-            const data = await res.json()
-
-            update_import_to_validate.value = data.import_sessions.length + data.update_sessions.length || 0
+            try {
+               const res  = await fetch('/rule/import_get_session_running')
+               const data = await res.json()
+               update_import_to_validate.value =
+                  (data.import_sessions?.length || 0) + (data.update_sessions?.length || 0)
+            } catch { update_import_to_validate.value = 0 }
+         }
+         async function getRunningJobs() {
+            try {
+               const res  = await fetch('/jobs/get_jobs?status=running')
+               const data = await res.json()
+               running_jobs_count.value = Array.isArray(data) ? data.length : 0
+            } catch { running_jobs_count.value = 0 }
          }
 
-         /**
-          *    ############
-          *    #  Search  #
-          *    ############
-          * */
-         const search_is_loading = ref(true)
-         const filterBar = ref(null);
-         const rules_list = ref([]);
-         const total_rules_liste = ref(0);
-         const current_page = ref(1);
-         const total_pages = ref(1);
+         // ── Search ──────────────────────────────────────────────────────────
+         const search_is_loading   = ref(true)
+         const filterBar           = ref(null)
+         const rules_list          = ref([])
+         const total_rules_liste   = ref(0)
+         const current_page        = ref(1)
+         const total_pages         = ref(1)
+         const showSearchContent   = ref(false)
+         const isSearchInitialized = ref(false)
 
          const onRulesUpdated = (results) => {
-            rules_list.value = results.rules.rule || [];
-            total_pages.value = results.total_pages || 1;
-            current_page.value = results.current_page || 1;
-            total_rules_liste.value = results.total_rules || 0;
-         };
+            rules_list.value        = results.rules.rule || []
+            total_pages.value       = results.total_pages || 1
+            current_page.value      = results.current_page || 1
+            total_rules_liste.value = results.total_rules || 0
+         }
 
          const changePage = (page) => {
             if (filterBar.value) {
-               filterBar.value.fetchRules(page);
-               window.scrollTo({ top: 0, behavior: 'smooth' });
+               filterBar.value.fetchRules(page)
+               window.scrollTo({ top: 0, behavior: 'smooth' })
             }
-         };
-
-         function giveFocus() {
-            setTimeout(() => {
-
-               const input = document.getElementById("searchInputCaneva");
-               if (input) {
-                  // apply a first fetch of the rules
-
-                  input.focus();
-               } else {
-                  filterBar.value.fetchRules(1);
-               }
-            }, 400);
          }
 
-         /**
-          *    ################
-          *    #   Fetch all  #
-          *    ################
-          * */
+         function initSearch() {
+            showSearchContent.value = true
+            setTimeout(() => {
+               if (!isSearchInitialized.value && filterBar.value) {
+                  filterBar.value.fetchRules(1)
+                  isSearchInitialized.value = true
+               }
+            }, 400)
+         }
 
+         // ── Init ────────────────────────────────────────────────────────────
          onMounted(() => {
             getNbRequestAdmin()
             getNbChanges()
             getNbRepport()
             getNbUpdate()
             getNbUpdateImport()
+            getRunningJobs()
+            // setInterval(getRunningJobs, 10000)  // refresh jobs every 10s
          })
 
-         const isSearchInitialized = ref(false);
-         const showSearchContent = ref(false);
-
-         function initSearch() {
-            showSearchContent.value = true;
-            giveFocus();
-            if (!isSearchInitialized.value) {
-               if (filterBar.value) {
-                  filterBar.value.fetchRules(1);
-                  isSearchInitialized.value = true;
-               }
-            }
-         }
-
          return {
-            requests_to_validate,
-            changes_to_validate,
-            repport_to_validate,
-            update_to_validate,
-            update_import_to_validate,
+            requests_to_validate, changes_to_validate, repport_to_validate,
+            update_to_validate, update_import_to_validate, running_jobs_count,
             total_notifications,
-
-            VulnerabilityDisplaysList,
-            RuleFilterBar,
-            PaginationComponent,
-
-            getNbRequestAdmin,
-            getNbChanges,
-            getNbRepport,
-            getNbUpdate,
-            getNbUpdateImport,
-
-            rules_list,
-            total_rules_liste,
-            current_page,
-            total_pages,
-            onRulesUpdated,
-            changePage,
-            giveFocus,
-
-            search_is_loading,
-            filterBar,
-            initSearch,
-            showSearchContent
+            search_is_loading, filterBar, rules_list, total_rules_liste,
+            current_page, total_pages, showSearchContent,
+            onRulesUpdated, changePage, initSearch,
          }
       },
    }).mount('#app')
