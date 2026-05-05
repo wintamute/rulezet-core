@@ -187,7 +187,7 @@ const { createApp, ref } = Vue;
 createApp({
     delimiters: ['[[', ']]'],
     setup() {
-        const bio = ref("{{ form.bio.data | tojson if form.bio.data else 'I love coding!' }}");
+        const bio = ref('{{ form.bio.data | tojson if form.bio.data else "I love coding!" }}');
         return { bio };
     }
 }).mount('#bio-container');
