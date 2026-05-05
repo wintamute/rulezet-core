@@ -149,3 +149,43 @@ def delete_job(job):
     except Exception as e:
         db.session.rollback()
         return False, str(e)
+
+
+def get_jobs_for_user(user_id, args):
+    query = BackgroundJob.query.filter_by(created_by=user_id)
+    if args.get('status'):
+        query = query.filter_by(status=args['status'])
+    if args.get('job_type'):
+        query = query.filter_by(job_type=args['job_type'])
+    if args.get('search'):
+        s = f"%{args['search']}%"
+        query = query.filter(BackgroundJob.label.ilike(s) | BackgroundJob.job_type.ilike(s))
+
+    page     = int(args.get('page', 1))
+    per_page = int(args.get('per_page', 20))
+    total    = query.count()
+    items    = query.order_by(BackgroundJob.created_at.desc())\
+                    .offset((page - 1) * per_page).limit(per_page).all()
+    return items, total, page, per_page
+
+
+def get_zombie_jobs():
+    """Jobs stuck at 'running' that the worker is no longer processing."""
+    return BackgroundJob.query.filter_by(status='running').all()
+
+
+def kill_all_zombies():
+    """Force all running jobs to failed — use when worker crashed."""
+    try:
+        zombies = BackgroundJob.query.filter_by(status='running').all()
+        count   = len(zombies)
+        for job in zombies:
+            job.status      = 'failed'
+            job.error       = 'Killed by admin — worker was not processing this job.'
+            job.finished_at = datetime.datetime.now(datetime.timezone.utc)
+            _log(job, "Job killed by admin — marked as failed.", level='error', event='killed')
+        db.session.commit()
+        return True, count, "All zombie jobs killed."
+    except Exception as e:
+        db.session.rollback()
+        return False, 0, str(e)

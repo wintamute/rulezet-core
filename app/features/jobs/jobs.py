@@ -33,8 +33,32 @@ def list_jobs():
 @jobs_blueprint.route('/get_jobs', methods=['GET'])
 @login_required
 def get_jobs():
-    jobs = JobsModel.get_jobs_for_user(current_user.id, request.args)
-    return jsonify([j.to_json() for j in jobs]), 200
+    items, total, page, per_page = JobsModel.get_jobs_for_user(current_user.id, request.args)
+    return jsonify({
+        "jobs":       [j.to_json() for j in items],
+        "total":      total,
+        "page":       page,
+        "per_page":   per_page,
+        "total_pages": max(1, -(-total // per_page)),  # ceil division
+    }), 200
+
+
+@jobs_blueprint.route('/zombies', methods=['GET'])
+@login_required
+def get_zombies():
+    if not current_user.is_admin():
+        return jsonify({"error": "Forbidden."}), 403
+    zombies = JobsModel.get_zombie_jobs()
+    return jsonify([j.to_json() for j in zombies]), 200
+
+
+@jobs_blueprint.route('/kill_zombies', methods=['POST'])
+@login_required
+def kill_zombies():
+    if not current_user.is_admin():
+        return jsonify({"error": "Forbidden."}), 403
+    ok, count, msg = JobsModel.kill_all_zombies()
+    return jsonify({"message": msg, "killed": count}), 200 if ok else 500
 
 
 @jobs_blueprint.route('/status/<string:job_uuid>', methods=['GET'])
