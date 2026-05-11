@@ -685,3 +685,293 @@ class DumpRules(Resource):
             "filters_applied": safe_filters,
             "data": safe_data
         }, 200
+    
+
+#####################
+#   Search rules    #
+#####################
+
+@rule_private_ns.route('/search')
+@rule_private_ns.doc(
+    description="""
+Search and filter rules with the same power as the web interface.
+
+All parameters are optional. Combining them applies AND logic between filters.
+
+### Headers
+
+| Header    | Type   | Required | Description            |
+|-----------|--------|----------|------------------------|
+| X-API-KEY | string | Yes      | Your personal API key  |
+
+### Body Parameters (JSON)
+
+| Parameter       | Type            | Description                                                                 |
+|-----------------|-----------------|-----------------------------------------------------------------------------|
+| search          | string          | Free-text search across title, description, format, author, content, uuid   |
+| search_field    | string          | Target field: `all` (default), `title`, `content`                           |
+| exact_match     | boolean         | If true, title uses strict equality, content uses case-sensitive LIKE       |
+| author          | string          | Filter by author name (partial, case-insensitive)                           |
+| rule_type       | string          | Filter by format (e.g. `yara`, `sigma`)                                     |
+| source          | string          | Filter by source — comma-separated for OR (e.g. `"github.com,internal"`)   |
+| license         | string          | Filter by license — comma-separated for OR (e.g. `"MIT,GPL"`)              |
+| vulnerabilities | list[string]    | Filter by CVE IDs (e.g. `["CVE-2021-44228"]`)                              |
+| tags            | list[string]    | Filter by tag names (e.g. `["malware", "apt"]`)                             |
+| sort_by         | string          | `newest` (default), `oldest`, `most_likes`, `least_likes`                  |
+| page            | integer         | Page number, default 1                                                      |
+| per_page        | integer         | Results per page, default 20, max 100. Ignored if `paginate` is false       |
+| paginate        | boolean         | If false, return all results without pagination (default: true)             |
+| fields          | list[string]    | Return only these fields. Omit for all fields. Use `["content"]` for rules-only |
+
+**fields available**(id, title, format, author, license, description, version, source, uuid, original_uuid, creation_date, last_modif, vote_up, vote_down,to_string, cve_id, github_path)
+
+
+### Response
+
+```json
+{
+  "success": true,
+  "total": 142,
+  "page": 1,
+  "per_page": 20,
+  "pages": 8,
+  "rules": [ ... ]
+}
+```
+
+### Example cURL
+
+```bash
+curl -X POST http://127.0.0.1:7009/api/rule/private/search \\
+-H "Content-Type: application/json" \\
+-H "X-API-KEY: <YOUR_API_KEY>" \\
+-d '{
+    "search": "mimikatz",
+    "rule_type": "yara",
+    "tags": ["credential_access"],
+    "sort_by": "most_likes",
+    "page": 1,
+    "per_page": 20
+}'
+```
+"""
+)
+class SearchRules(Resource):
+    @api_required
+    def post(self):
+        """Search rules with full filter support (same as the web interface)"""
+        user = utils.get_user_from_api(request.headers)
+        if not user:
+            return {"success": False, "message": "Unauthorized"}, 403
+
+        data = request.get_json(silent=True)
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            return {"success": False, "message": "Request body must be a JSON object"}, 400
+
+        # ── Pagination ────────────────────────────────────────────────────────
+        try:
+            page = int(data.get("page", 1))
+            if page < 1:
+                return {"success": False, "message": "'page' must be >= 1"}, 400
+        except (TypeError, ValueError):
+            return {"success": False, "message": "'page' must be an integer"}, 400
+
+        try:
+            per_page = int(data.get("per_page", 20))
+            if not (1 <= per_page <= 100):
+                return {"success": False, "message": "'per_page' must be between 1 and 100"}, 400
+        except (TypeError, ValueError):
+            return {"success": False, "message": "'per_page' must be an integer"}, 400
+
+        # ── search / search_field / exact_match ───────────────────────────────
+        search      = data.get("search")
+        search_field = data.get("search_field", "all")
+        exact_match  = data.get("exact_match", False)
+
+        if search is not None:
+            if not isinstance(search, str):
+                return {"success": False, "message": "'search' must be a string"}, 400
+            search = search.strip()
+            if not search:
+                search = None
+
+        VALID_SEARCH_FIELDS = {"all", "title", "content"}
+        if search_field not in VALID_SEARCH_FIELDS:
+            return {
+                "success": False,
+                "message": f"'search_field' must be one of: {', '.join(sorted(VALID_SEARCH_FIELDS))}"
+            }, 400
+
+        if not isinstance(exact_match, bool):
+            if str(exact_match).lower() in ("true", "1"):
+                exact_match = True
+            elif str(exact_match).lower() in ("false", "0", ""):
+                exact_match = False
+            else:
+                return {"success": False, "message": "'exact_match' must be a boolean"}, 400
+
+        # ── sort_by ───────────────────────────────────────────────────────────
+        sort_by = data.get("sort_by", "newest")
+        VALID_SORT = {"newest", "oldest", "most_likes", "least_likes"}
+        if sort_by not in VALID_SORT:
+            return {
+                "success": False,
+                "message": f"'sort_by' must be one of: {', '.join(sorted(VALID_SORT))}"
+            }, 400
+
+        # ── scalar string fields ──────────────────────────────────────────────
+        author    = data.get("author")
+        rule_type = data.get("rule_type")
+        source    = data.get("source")
+        license_  = data.get("license")
+
+        for name, value in [("author", author), ("rule_type", rule_type),
+                             ("source", source), ("license", license_)]:
+            if value is not None and not isinstance(value, str):
+                return {"success": False, "message": f"'{name}' must be a string"}, 400
+
+        author    = author.strip()    if author    else None
+        rule_type = rule_type.strip() if rule_type else None
+        source    = source.strip()    if source    else None
+        license_  = license_.strip()  if license_  else None
+
+        # ── list fields ───────────────────────────────────────────────────────
+        vulnerabilities = data.get("vulnerabilities")
+        tags            = data.get("tags")
+
+        def _coerce_list(value, param_name):
+            """Accept a list or a comma-separated string. Return list or error tuple."""
+            if value is None:
+                return None, None
+            if isinstance(value, str):
+                value = [v.strip() for v in value.split(",") if v.strip()]
+            if not isinstance(value, list):
+                return None, ({"success": False, "message": f"'{param_name}' must be a list or comma-separated string"}, 400)
+            cleaned = [str(v).strip() for v in value if str(v).strip()]
+            return cleaned if cleaned else None, None
+
+        vulnerabilities, err = _coerce_list(vulnerabilities, "vulnerabilities")
+        if err:
+            return err
+
+        tags, err = _coerce_list(tags, "tags")
+        if err:
+            return err
+
+        # ── pagination flag ───────────────────────────────────────────────────
+        paginate_flag = data.get("paginate", True)
+        if not isinstance(paginate_flag, bool):
+            if str(paginate_flag).lower() in ("true", "1"):
+                paginate_flag = True
+            elif str(paginate_flag).lower() in ("false", "0"):
+                paginate_flag = False
+            else:
+                return {"success": False, "message": "'paginate' must be a boolean"}, 400
+
+        # ── fields selection ──────────────────────────────────────────────────
+        AVAILABLE_FIELDS = {
+            "id", "title", "format", "author", "license", "description",
+            "version", "source", "uuid", "original_uuid", "creation_date",
+            "last_modif", "vote_up", "vote_down", "to_string", "cve_id", "github_path"
+        }
+
+        requested_fields = data.get("fields")
+        if requested_fields is not None:
+            requested_fields, err = _coerce_list(requested_fields, "fields")
+            if err:
+                return err
+            if requested_fields:
+                invalid = set(requested_fields) - AVAILABLE_FIELDS
+                if invalid:
+                    return {
+                        "success": False,
+                        "message": f"Unknown field(s): {', '.join(sorted(invalid))}. "
+                                   f"Available: {', '.join(sorted(AVAILABLE_FIELDS))}"
+                    }, 400
+            else:
+                requested_fields = None  # empty list → return all
+
+
+        if vulnerabilities:
+            import re
+            cve_pattern = re.compile(r'^CVE-\d{4}-\d{4,7}$', re.IGNORECASE)
+            bad_cves = [v for v in vulnerabilities if not cve_pattern.match(v)]
+            if bad_cves:
+                return {
+                    "success": False,
+                    "message": f"Invalid CVE format(s): {', '.join(bad_cves)}. Expected format: CVE-YYYY-NNNNN"
+                }, 400
+
+        # ── Run query ─────────────────────────────────────────────────────────
+        try:
+            query = RuleModel.filter_rules(
+                search          = search,
+                search_field    = search_field,
+                exact_match     = exact_match,
+                author          = author,
+                rule_type       = rule_type,
+                source          = source,
+                license         = license_,
+                vulnerabilities = vulnerabilities,
+                tags            = tags,
+                sort_by         = sort_by,
+            )
+        except Exception as e:
+            return {"success": False, "message": f"Query error: {str(e)}"}, 500
+
+        # ── Serialize ─────────────────────────────────────────────────────────
+        ALL_FIELDS = {
+            "id":            lambda r: r.id,
+            "title":         lambda r: r.title,
+            "format":        lambda r: r.format,
+            "author":        lambda r: r.author,
+            "license":       lambda r: r.license,
+            "description":   lambda r: r.description,
+            "version":       lambda r: r.version,
+            "source":        lambda r: r.source,
+            "uuid":          lambda r: r.uuid,
+            "original_uuid": lambda r: r.original_uuid,
+            "creation_date": lambda r: r.creation_date.strftime('%Y-%m-%d %H:%M') if r.creation_date else None,
+            "last_modif":    lambda r: r.last_modif.strftime('%Y-%m-%d %H:%M')    if r.last_modif    else None,
+            "vote_up":       lambda r: r.vote_up,
+            "vote_down":     lambda r: r.vote_down,
+            "to_string":     lambda r: r.to_string,
+            "cve_id":        lambda r: r.cve_id if r.cve_id is not None else [],
+            "github_path":   lambda r: r.github_path,
+        }
+
+        fields_to_use = requested_fields if requested_fields else list(ALL_FIELDS.keys())
+
+        def _serialize(rule):
+            return {f: ALL_FIELDS[f](rule) for f in fields_to_use}
+
+        # ── No pagination ─────────────────────────────────────────────────────
+        if not paginate_flag:
+            try:
+                rules = query.all()
+            except Exception as e:
+                return {"success": False, "message": f"Query error: {str(e)}"}, 500
+            return {
+                "success":  True,
+                "total":    len(rules),
+                "paginate": False,
+                "rules":    [_serialize(r) for r in rules],
+            }, 200
+
+        # ── Paginated ─────────────────────────────────────────────────────────
+        try:
+            paginated = query.paginate(page=page, per_page=per_page, max_per_page=100, error_out=False)
+        except Exception as e:
+            return {"success": False, "message": f"Query error: {str(e)}"}, 500
+
+        return {
+            "success":  True,
+            "total":    paginated.total,
+            "page":     paginated.page,
+            "per_page": paginated.per_page,
+            "pages":    paginated.pages,
+            "paginate": True,
+            "rules":    [_serialize(r) for r in paginated.items],
+        }, 200

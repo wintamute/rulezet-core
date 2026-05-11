@@ -84,7 +84,7 @@ def add_rule_core(form_dict, user) -> tuple[bool, str] | tuple[Rule, str]:
             vote_up=0,
             vote_down=0,
             to_string=new_to_string,
-            cve_id= form_dict.get("vulnerabilities") or form_dict.get("cve_id") or [],
+            cve_id= json.dumps(form_dict.get("vulnerabilities") if isinstance(form_dict.get("vulnerabilities"), list) else (form_dict.get("cve_id") or [])),
             github_path=form_dict.get("github_path") or None
         )
 
@@ -1150,6 +1150,10 @@ def filter_rules(search=None, search_field="all", author=None, sort_by=None, rul
             query = query.join(RuleTagAssociation).filter(
                 RuleTagAssociation.tag_id.in_(tag_ids)
             ).distinct()
+        else:
+            # Tag requested but doesn't exist in DB → no rules can match
+            query = query.filter(False)
+
 
 
     if source:
