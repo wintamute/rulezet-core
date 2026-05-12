@@ -269,11 +269,13 @@
       padding: 1.25rem 1.5rem;
       margin-bottom: 1rem;
       box-shadow: var(--shadow);
+      min-width: 0;
+      overflow: hidden;
     }
 
     .doc-card-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
       gap: 1rem;
       margin-bottom: 1.25rem;
     }
@@ -1330,19 +1332,21 @@ flask db upgrade          # Apply pending migrations</code></pre>
         <div class="section-icon icon-indigo"><i class="fas fa-plug"></i></div>
         <h2 class="section-title">API Overview</h2>
       </div>
-      <p>REST API is powered by <strong>Flask-RESTX</strong> with Swagger UI served at <code>/api/</code>. The <code>Api</code> object is created in <code>app/api/api.py</code>. All API routes are CSRF-exempt.</p>
+      <p>REST API powered by <strong>Flask-RESTX</strong>. Swagger UI is served at <code>/api/</code>. All API routes are <strong>CSRF-exempt</strong>. The base URL for a local dev server is <code>http://127.0.0.1:7009</code>.</p>
 
       <table class="custom-table">
-        <thead><tr><th>Namespace</th><th>Prefix</th><th>Auth Required</th></tr></thead>
+        <thead><tr><th>Namespace label</th><th>URL prefix</th><th>Auth</th><th>Source file</th></tr></thead>
         <tbody>
-          <tr><td>Rule Public</td><td><code>/api/rule/public</code></td><td><span class="badge-status badge-ok">None</span></td></tr>
-          <tr><td>Rule Private</td><td><code>/api/rule/private</code></td><td><span class="badge-status badge-auth">X-API-KEY</span></td></tr>
-          <tr><td>Bundle Public</td><td><code>/api/bundle/public</code></td><td><span class="badge-status badge-ok">None</span></td></tr>
-          <tr><td>Bundle Private</td><td><code>/api/bundle/private</code></td><td><span class="badge-status badge-auth">X-API-KEY</span></td></tr>
-          <tr><td>Account Public</td><td><code>/api/account/public</code></td><td><span class="badge-status badge-ok">None</span></td></tr>
-          <tr><td>Account Private</td><td><code>/api/account/private</code></td><td><span class="badge-status badge-auth">X-API-KEY</span></td></tr>
+          <tr><td>Public action on Rule ✅</td><td><code>/api/rule/public</code></td><td><span class="badge-status badge-ok">None</span></td><td><code>app/api/rule/rule_public_api.py</code></td></tr>
+          <tr><td>Private action on Rule 🔑</td><td><code>/api/rule/private</code></td><td><span class="badge-status badge-auth">X-API-KEY</span></td><td><code>app/api/rule/rule_private_api.py</code></td></tr>
+          <tr><td>Public action on Bundle ✅</td><td><code>/api/bundle/public</code></td><td><span class="badge-status badge-ok">None</span></td><td><code>app/api/bundle/bundle_public_api.py</code></td></tr>
+          <tr><td>Private action on Bundle 🔑</td><td><code>/api/bundle/private</code></td><td><span class="badge-status badge-auth">X-API-KEY</span></td><td><code>app/api/bundle/bundle_private_api.py</code></td></tr>
+          <tr><td>Public account action ✅</td><td><code>/api/account/public</code></td><td><span class="badge-status badge-ok">None</span></td><td><code>app/api/account/account_public_api.py</code></td></tr>
+          <tr><td>Private account action 🔑</td><td><code>/api/account/private</code></td><td><span class="badge-status badge-auth">X-API-KEY</span></td><td><code>app/api/account/account_private_api.py</code></td></tr>
         </tbody>
       </table>
+
+      <div class="callout callout-info"><i class="fas fa-circle-info"></i> Input can be sent as a <strong>JSON body</strong> (<code>Content-Type: application/json</code>) or as <strong>query string parameters</strong> for most endpoints. Private endpoints always require the <code>X-API-KEY</code> header.</div>
     </section>
 
     <!-- ════════════════════════ API AUTH ════════════════════════ -->
@@ -1351,39 +1355,49 @@ flask db upgrade          # Apply pending migrations</code></pre>
         <div class="section-icon icon-orange"><i class="fas fa-key"></i></div>
         <h2 class="section-title">API Authentication</h2>
       </div>
-      <p>Private endpoints use API key authentication via the <code>X-API-KEY</code> HTTP header.</p>
+      <p>Private endpoints require a 60-character alphanumeric API key passed in the <code>X-API-KEY</code> HTTP request header. Your key is shown in your Rulezet profile page.</p>
 
-      <h3 class="subsection">Key Utilities — app/core/utils/utils.py</h3>
+      <h3 class="subsection">Auth utilities — app/core/utils/utils.py</h3>
       <div class="func-signature">
         def <span class="fn-name">generate_api_key</span>(<span class="fn-param">length: int = 60</span>) → <span class="fn-ret">str</span><br>
-        <span class="fn-comment">  # Generates a cryptographically-random alphanumeric key</span>
-      </div>
-      <div class="func-signature">
-        def <span class="fn-name">get_user_api</span>(<span class="fn-param">api_key: str</span>) → <span class="fn-ret">User | None</span><br>
-        <span class="fn-comment">  # Looks up User by api_key</span>
+        <span class="fn-comment">  # Cryptographically-random alphanumeric key (secrets.token_hex based)</span>
       </div>
       <div class="func-signature">
         def <span class="fn-name">verif_api_key</span>(<span class="fn-param">headers: dict</span>) → <span class="fn-ret">bool</span><br>
-        <span class="fn-comment">  # Checks X-API-KEY header is present and valid</span>
+        <span class="fn-comment">  # Returns True if X-API-KEY header is present and matches a user row</span>
       </div>
       <div class="func-signature">
         def <span class="fn-name">get_user_from_api</span>(<span class="fn-param">headers: dict</span>) → <span class="fn-ret">User | None</span><br>
-        <span class="fn-comment">  # Returns User from X-API-KEY header</span>
+        <span class="fn-comment">  # Resolves X-API-KEY → User object (None if key invalid)</span>
       </div>
 
-      <h3 class="subsection">@api_required Decorator — app/core/utils/decorators.py</h3>
-      <div class="func-signature">
-        <span class="fn-comment"># decorators.py</span><br>
-        def <span class="fn-name">verification_required</span>():<br>
-        &nbsp;&nbsp;<span class="fn-comment"># Wraps a route; checks X-API-KEY for /api/ paths</span><br>
-        &nbsp;&nbsp;<span class="fn-comment"># Returns 401 JSON on missing/invalid key</span><br><br>
-        <span class="fn-name">api_required</span> = verification_required()(f)  <span class="fn-comment"># pre-applied decorator</span>
-      </div>
+      <h3 class="subsection">@api_required decorator — app/core/utils/decorators.py</h3>
+      <p>Wraps any private resource method. Returns <code>401</code> JSON when the key is missing or invalid.</p>
+      <div class="code-label">usage</div>
+      <pre><code>from app.core.utils.decorators import api_required
 
-      <h3 class="subsection">Example Request</h3>
+class MyPrivateResource(Resource):
+    @api_required
+    def get(self):
+        user = utils.get_user_from_api(request.headers)
+        ...</code></pre>
+
+      <h3 class="subsection">Error responses</h3>
+      <table class="custom-table">
+        <thead><tr><th>Status</th><th>Condition</th><th>Body</th></tr></thead>
+        <tbody>
+          <tr><td><code>401</code></td><td>Missing or invalid <code>X-API-KEY</code></td><td><code>{"message": "Unauthorized"}</code></td></tr>
+          <tr><td><code>403</code></td><td>Key valid but not enough permissions</td><td><code>{"success": false, "message": "Access denied"}</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="subsection">Quick test</h3>
       <div class="code-label">curl</div>
-      <pre><code>curl -X GET "https://your-rulezet-instance.com/api/rule/private/me" \
-  -H "X-API-KEY: your_60_char_api_key_here"</code></pre>
+      <pre><code>curl -X GET http://127.0.0.1:7009/api/rule/private/me \
+  -H "X-API-KEY: YOUR_60_CHAR_KEY"
+
+# 200 → {"message": "Welcome Alice!", "user_id": 4}
+# 401 → {"message": "Unauthorized"}</code></pre>
     </section>
 
     <!-- ════════════════════════ API RULE PUBLIC ════════════════════════ -->
@@ -1392,61 +1406,206 @@ flask db upgrade          # Apply pending migrations</code></pre>
         <div class="section-icon icon-green"><i class="fas fa-unlock"></i></div>
         <h2 class="section-title">Rule Public API</h2>
       </div>
-      <p>File: <code>app/api/rule/rule_public_api.py</code> — No authentication required.</p>
+      <p>File: <code>app/api/rule/rule_public_api.py</code> — No authentication required. All endpoints accept GET query parameters.</p>
 
+      <!-- ── searchPage ── -->
       <h3 class="subsection">GET /api/rule/public/searchPage</h3>
       <div class="endpoint-row">
         <span class="badge-method badge-get">GET</span>
         <div>
           <div class="endpoint-path">/api/rule/public/searchPage</div>
-          <div class="endpoint-desc">Paginated rule search with filters</div>
+          <div class="endpoint-desc">Paginated rule search. Returns pagination links (next/prev URLs).</div>
         </div>
       </div>
       <table class="custom-table">
-        <thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Allowed values / notes</th></tr></thead>
         <tbody>
-          <tr><td><code>search</code></td><td>string</td><td>""</td><td>Full-text search on rule name / content</td></tr>
-          <tr><td><code>author</code></td><td>string</td><td>""</td><td>Filter by author username</td></tr>
-          <tr><td><code>rule_type</code></td><td>string</td><td>""</td><td>Format filter: yara, sigma, suricata…</td></tr>
-          <tr><td><code>sort_by</code></td><td>string</td><td>"date_desc"</td><td>Sorting: date_asc, date_desc, score_asc, score_desc</td></tr>
-          <tr><td><code>page</code></td><td>integer</td><td>1</td><td>Page number (1-based)</td></tr>
-          <tr><td><code>per_page</code></td><td>integer</td><td>20</td><td>Results per page (max 100)</td></tr>
+          <tr><td><code>search</code></td><td>string</td><td>—</td><td>Keyword to match against rule title</td></tr>
+          <tr><td><code>author</code></td><td>string</td><td>—</td><td>Filter by author username</td></tr>
+          <tr><td><code>rule_type</code></td><td>string</td><td>—</td><td>yara, sigma, suricata, zeek, crs, nova, nse, wazuh, elastic</td></tr>
+          <tr><td><code>sort_by</code></td><td>string</td><td>—</td><td><code>newest</code> · <code>oldest</code> · <code>most_likes</code> · <code>least_likes</code></td></tr>
+          <tr><td><code>page</code></td><td>integer</td><td>1</td><td>1-based page number</td></tr>
+          <tr><td><code>per_page</code></td><td>integer</td><td>10</td><td>Items per page</td></tr>
         </tbody>
       </table>
       <div class="code-label">curl</div>
-      <pre><code>curl "https://your-rulezet/api/rule/public/searchPage?search=ransomware&rule_type=yara&page=1&per_page=10"</code></pre>
-      <div class="code-label">response</div>
+      <pre><code>curl -G "http://127.0.0.1:7009/api/rule/public/searchPage" \
+  --data-urlencode "search=detect" \
+  --data-urlencode "author=John" \
+  --data-urlencode "sort_by=newest" \
+  --data-urlencode "page=1" \
+  --data-urlencode "per_page=10"</code></pre>
+      <div class="code-label">response 200</div>
       <pre><code>{
-  "rules": [
+  "total_rules_found": 42,
+  "total_pages": 5,
+  "pagination": {
+    "prev_page": null,
+    "current_page": 1,
+    "next_page": "http://127.0.0.1:7009/api/rule/public/searchPage?page=2&per_page=10&search=detect"
+  },
+  "results": [
     {
       "uuid": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "Detect_Ransomware_Generic",
-      "format": "yara",
+      "title": "Detect_Ransomware_Generic",
+      "description": "Detects generic ransomware patterns",
       "author": "analyst01",
-      "score": 42,
-      "created_at": "2025-03-15T10:23:00Z"
+      "creation_date": "2025-03-15T10:23:00",
+      "format": "yara",
+      "content": "rule Detect_Ransomware_Generic { ... }"
     }
-  ],
-  "total": 1,
-  "page": 1,
-  "per_page": 10
+  ]
 }</code></pre>
 
-      <h3 class="subsection">Other Public Endpoints</h3>
+      <!-- ── search ── -->
+      <h3 class="subsection">GET /api/rule/public/search</h3>
       <div class="endpoint-row">
         <span class="badge-method badge-get">GET</span>
         <div>
-          <div class="endpoint-path">/api/rule/public/&lt;uuid&gt;</div>
-          <div class="endpoint-desc">Fetch a single rule by UUID</div>
+          <div class="endpoint-path">/api/rule/public/search</div>
+          <div class="endpoint-desc">Same filters as <code>searchPage</code> but returns all matching rules in a single response (no pagination).</div>
         </div>
       </div>
+      <table class="custom-table">
+        <thead><tr><th>Parameter</th><th>Type</th><th>Allowed values</th></tr></thead>
+        <tbody>
+          <tr><td><code>search</code></td><td>string</td><td>Free text</td></tr>
+          <tr><td><code>author</code></td><td>string</td><td>Author username</td></tr>
+          <tr><td><code>rule_type</code></td><td>string</td><td>yara · sigma · suricata · zeek · crs · nova · nse · wazuh · elastic</td></tr>
+          <tr><td><code>sort_by</code></td><td>string</td><td><code>newest</code> · <code>oldest</code> · <code>most_likes</code> · <code>least_likes</code></td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -G "http://127.0.0.1:7009/api/rule/public/search" \
+  --data-urlencode "search=detect" \
+  --data-urlencode "author=malgamy12" \
+  --data-urlencode "rule_type=yara" \
+  --data-urlencode "sort_by=newest"</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{
+  "total_rules_found": 3,
+  "results": [
+    { "uuid": "...", "title": "...", "description": "...", "author": "...",
+      "creation_date": "2025-01-10T08:00:00", "format": "yara", "content": "..." }
+  ]
+}</code></pre>
+
+      <!-- ── Convert_MISP ── -->
+      <h3 class="subsection">GET /api/rule/public/Convert_MISP</h3>
       <div class="endpoint-row">
         <span class="badge-method badge-get">GET</span>
         <div>
-          <div class="endpoint-path">/api/rule/public/formats</div>
-          <div class="endpoint-desc">List all supported rule formats</div>
+          <div class="endpoint-path">/api/rule/public/Convert_MISP</div>
+          <div class="endpoint-desc">Search rules and convert matching ones to MISP objects. Rules that cannot be converted return <code>"misp_object": null</code>.</div>
         </div>
       </div>
+      <table class="custom-table">
+        <thead><tr><th>Parameter</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>search</code></td><td>string</td><td>Keyword in rule title</td></tr>
+          <tr><td><code>author</code></td><td>string</td><td>Filter by author</td></tr>
+          <tr><td><code>rule_type</code></td><td>string</td><td>Format filter</td></tr>
+          <tr><td><code>sort_by</code></td><td>string</td><td><code>newest</code> · <code>oldest</code> · <code>most_likes</code> · <code>least_likes</code></td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -G "http://127.0.0.1:7009/api/rule/public/Convert_MISP" \
+  --data-urlencode "search=mars" \
+  --data-urlencode "author=John" \
+  --data-urlencode "rule_type=yara" \
+  --data-urlencode "sort_by=newest"</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{
+  "total_rules_found": 1,
+  "results": [
+    {
+      "uuid": "...", "title": "Mars_Ransomware", "format": "yara",
+      "misp_object": { "name": "yara", "meta-category": "antivirus", ... }
+    }
+  ]
+}</code></pre>
+
+      <!-- ── detail ── -->
+      <h3 class="subsection">GET /api/rule/public/detail/&lt;rule_id&gt;</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-get">GET</span>
+        <div>
+          <div class="endpoint-path">/api/rule/public/detail/&lt;rule_id&gt;</div>
+          <div class="endpoint-desc">Full detail of a single rule by its integer <code>rule_id</code>.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Path param</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>rule_id</code></td><td>integer</td><td>The internal DB primary key of the rule</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl http://127.0.0.1:7009/api/rule/public/detail/6</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{
+  "id": 6,
+  "title": "Detect_Mimikatz",
+  "format": "yara",
+  "version": "1.0",
+  "to_string": "rule Detect_Mimikatz { ... }",
+  "description": "Detects Mimikatz credential dumper",
+  "source": "internal",
+  "license": "MIT",
+  "cve_id": [],
+  "original_uuid": null,
+  "user": { "id": 2, "first_name": "Alice", "last_name": "Martin" }
+}</code></pre>
+      <div class="callout callout-warn"><i class="fas fa-triangle-exclamation"></i> Returns <code>404</code> if the rule or author does not exist.</div>
+
+      <!-- ── all_by_user ── -->
+      <h3 class="subsection">GET /api/rule/public/all_by_user/&lt;user_id&gt;</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-get">GET</span>
+        <div>
+          <div class="endpoint-path">/api/rule/public/all_by_user/&lt;user_id&gt;</div>
+          <div class="endpoint-desc">All rules created by a specific user. Returns an empty list (not 404) when the user has no rules.</div>
+        </div>
+      </div>
+      <div class="code-label">curl</div>
+      <pre><code>curl http://127.0.0.1:7009/api/rule/public/all_by_user/4</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{
+  "message": "3 rules found for user Alice Martin",
+  "rules": [
+    { "id": 6, "title": "...", "format": "yara", "version": "1.0",
+      "to_string": "...", "description": "...", "source": "...",
+      "license": "MIT", "cve_id": null, "original_uuid": null,
+      "user": { "id": 4, "first_name": "Alice", "last_name": "Martin" } }
+  ],
+  "success": true
+}</code></pre>
+
+      <!-- ── search_rules_by_cve ── -->
+      <h3 class="subsection">GET /api/rule/public/search_rules_by_cve</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-get">GET</span>
+        <div>
+          <div class="endpoint-path">/api/rule/public/search_rules_by_cve</div>
+          <div class="endpoint-desc">Find rules linked to specific CVE / GHSA / PYSEC identifiers. The endpoint auto-detects and normalises vulnerability patterns from the raw input string.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>cve_ids</code></td><td>string</td><td>Comma-separated list or raw string with one or more IDs — e.g. <code>CVE-2021-44228,GHSA-j8v8-6h6r-m6pq</code></td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -G "http://127.0.0.1:7009/api/rule/public/search_rules_by_cve" \
+  --data-urlencode "cve_ids=CVE-2021-44228,GHSA-j8v8-6h6r-m6pq"</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{
+  "detected_patterns": ["CVE-2021-44228", "GHSA-j8v8-6h6r-m6pq"],
+  "total_matches": 5,
+  "stats": { "yara": 3, "sigma": 2 },
+  "results": [ { "uuid": "...", "title": "Log4Shell_Detect", ... } ]
+}</code></pre>
     </section>
 
     <!-- ════════════════════════ API RULE PRIVATE ════════════════════════ -->
@@ -1455,74 +1614,278 @@ flask db upgrade          # Apply pending migrations</code></pre>
         <div class="section-icon icon-red"><i class="fas fa-lock"></i></div>
         <h2 class="section-title">Rule Private API</h2>
       </div>
-      <p>File: <code>app/api/rule/rule_private_api.py</code> — Requires <code>X-API-KEY</code> header.</p>
+      <p>File: <code>app/api/rule/rule_private_api.py</code> — All endpoints require the <code>X-API-KEY</code> header decorated with <code>@api_required</code>.</p>
 
+      <!-- ── me ── -->
       <h3 class="subsection">GET /api/rule/private/me</h3>
       <div class="endpoint-row">
         <span class="badge-method badge-get">GET</span>
         <div>
           <div class="endpoint-path">/api/rule/private/me</div>
-          <div class="endpoint-desc">Test API key connection, returns authenticated user info</div>
+          <div class="endpoint-desc">Test your API key. Returns the authenticated user's name and ID.</div>
         </div>
       </div>
       <div class="code-label">curl</div>
-      <pre><code>curl -H "X-API-KEY: &lt;key&gt;" https://your-rulezet/api/rule/private/me</code></pre>
+      <pre><code>curl http://127.0.0.1:7009/api/rule/private/me \
+  -H "X-API-KEY: YOUR_KEY"</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{ "message": "Welcome Alice!", "user_id": 4 }</code></pre>
 
+      <!-- ── create ── -->
       <h3 class="subsection">POST /api/rule/private/create</h3>
       <div class="endpoint-row">
         <span class="badge-method badge-post">POST</span>
         <div>
           <div class="endpoint-path">/api/rule/private/create</div>
-          <div class="endpoint-desc">Create a new rule programmatically</div>
+          <div class="endpoint-desc">Create a new detection rule. Rule syntax is validated by the matching <code>RuleType</code> subclass before insertion.</div>
         </div>
       </div>
+      <div class="callout callout-info"><i class="fas fa-circle-info"></i> Body accepts <strong>JSON</strong> (<code>Content-Type: application/json</code>) or URL query parameters. The <code>author</code> field is always set from the API key user and cannot be overridden.</div>
       <table class="custom-table">
-        <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+        <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Constraints / Notes</th></tr></thead>
         <tbody>
-          <tr><td><code>name</code></td><td>string</td><td>yes</td><td>Rule name</td></tr>
-          <tr><td><code>content</code></td><td>string</td><td>yes</td><td>Full rule text</td></tr>
-          <tr><td><code>format</code></td><td>string</td><td>yes</td><td>Format identifier (yara, sigma…)</td></tr>
-          <tr><td><code>description</code></td><td>string</td><td>no</td><td>Human-readable description</td></tr>
-          <tr><td><code>severity</code></td><td>string</td><td>no</td><td>low / medium / high / critical</td></tr>
-          <tr><td><code>github_url</code></td><td>string</td><td>no</td><td>Source repository URL</td></tr>
-          <tr><td><code>github_path</code></td><td>string</td><td>no</td><td>Path within the repository</td></tr>
-          <tr><td><code>tags</code></td><td>array[string]</td><td>no</td><td>Tag names to attach</td></tr>
+          <tr><td><code>title</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Must be unique and non-empty</td></tr>
+          <tr><td><code>format</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>yara · sigma · suricata · zeek · crs · nova · nse · wazuh · elastic</td></tr>
+          <tr><td><code>to_string</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Full rule text. Must pass <code>verify_syntax_rule_by_format()</code></td></tr>
+          <tr><td><code>version</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Non-empty version string (e.g. <code>"1.0"</code>)</td></tr>
+          <tr><td><code>license</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Non-empty license string (e.g. <code>"MIT"</code>)</td></tr>
+          <tr><td><code>description</code></td><td>string</td><td>No</td><td>Defaults to <code>"No description provided"</code></td></tr>
+          <tr><td><code>source</code></td><td>string</td><td>No</td><td>Defaults to authenticated user's full name</td></tr>
+          <tr><td><code>original_uuid</code></td><td>string</td><td>No</td><td>Preserve original UUID from source system</td></tr>
+          <tr><td><code>cve_id</code></td><td>string</td><td>No</td><td>CVE format: <code>CVE-YYYY-NNNNN</code>. Validated with <code>utils.detect_cve()</code></td></tr>
         </tbody>
       </table>
       <div class="code-label">curl</div>
-      <pre><code>curl -X POST https://your-rulezet/api/rule/private/create \
-  -H "X-API-KEY: &lt;key&gt;" \
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/rule/private/create \
   -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
   -d '{
-    "name": "Detect_Mimikatz",
-    "format": "yara",
-    "severity": "critical",
-    "content": "rule Detect_Mimikatz { strings: $s1 = \"sekurlsa\" condition: $s1 }",
-    "tags": ["credential-theft", "lolbas"]
+    "title":       "Detect_Mimikatz_v2",
+    "format":      "yara",
+    "version":     "2.0",
+    "license":     "MIT",
+    "to_string":   "rule Detect_Mimikatz { strings: $s = \"sekurlsa\" condition: $s }",
+    "description": "Detects Mimikatz sekurlsa module",
+    "source":      "internal",
+    "cve_id":      "CVE-2021-36934"
   }'</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{ "message": "Rule created successfully", "rule": { "id": 99, "uuid": "...", "title": "Detect_Mimikatz_v2", ... } }</code></pre>
+      <table class="custom-table">
+        <thead><tr><th>Status</th><th>Condition</th></tr></thead>
+        <tbody>
+          <tr><td><code>200</code></td><td>Rule created successfully</td></tr>
+          <tr><td><code>400</code></td><td>Missing required fields, invalid CVE format, or syntax validation failure</td></tr>
+          <tr><td><code>409</code></td><td>A rule with that title already exists</td></tr>
+        </tbody>
+      </table>
 
-      <h3 class="subsection">Other Private Endpoints</h3>
-      <div class="endpoint-row">
-        <span class="badge-method badge-put">PUT</span>
-        <div>
-          <div class="endpoint-path">/api/rule/private/&lt;uuid&gt;</div>
-          <div class="endpoint-desc">Update a rule (owner or admin only)</div>
-        </div>
-      </div>
-      <div class="endpoint-row">
-        <span class="badge-method badge-delete">DELETE</span>
-        <div>
-          <div class="endpoint-path">/api/rule/private/&lt;uuid&gt;</div>
-          <div class="endpoint-desc">Delete a rule (owner or admin only)</div>
-        </div>
-      </div>
+      <!-- ── delete ── -->
+      <h3 class="subsection">POST /api/rule/private/delete</h3>
       <div class="endpoint-row">
         <span class="badge-method badge-post">POST</span>
         <div>
-          <div class="endpoint-path">/api/rule/private/&lt;uuid&gt;/vote</div>
-          <div class="endpoint-desc">Vote on a rule — body: <code>{"value": 1}</code> or <code>{"value": -1}</code></div>
+          <div class="endpoint-path">/api/rule/private/delete</div>
+          <div class="endpoint-desc">Delete a rule by its integer ID. Only the rule owner or an admin can delete.</div>
         </div>
       </div>
+      <table class="custom-table">
+        <thead><tr><th>Field (JSON body)</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>rule_id</code></td><td>integer</td><td><span class="badge-status badge-auth">Yes</span></td><td>Internal DB primary key of the rule</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/rule/private/delete \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
+  -d '{"rule_id": 42}'</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → {"success": true,  "message": "Rule with ID '42' deleted successfully"}
+403 → {"success": false, "message": "Access denied: you are not the owner or an admin"}
+404 → {"success": false, "message": "No rule found with ID '42'"}</code></pre>
+
+      <!-- ── favorite ── -->
+      <h3 class="subsection">GET /api/rule/private/favorite/&lt;rule_id&gt;</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-get">GET</span>
+        <div>
+          <div class="endpoint-path">/api/rule/private/favorite/&lt;rule_id&gt;</div>
+          <div class="endpoint-desc">Toggle a rule in/out of your favourites. Idempotent — calling twice returns the rule to its original state.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Path param</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>rule_id</code></td><td>integer</td><td>ID of the rule to favourite / unfavourite</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl http://127.0.0.1:7009/api/rule/private/favorite/4 \
+  -H "X-API-KEY: YOUR_KEY"</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → {"success": true, "message": "Rule added to favorites"}
+200 → {"success": true, "message": "Rule removed from favorites"}  # if already favorited
+403 → {"success": false, "message": "Unauthorized"}</code></pre>
+
+      <!-- ── import_rules_from_github ── -->
+      <h3 class="subsection">POST /api/rule/private/import_rules_from_github</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/api/rule/private/import_rules_from_github</div>
+          <div class="endpoint-desc">Clone a GitHub repository and import all supported detection rules into the DB. <strong>Admin only.</strong></div>
+        </div>
+      </div>
+      <div class="callout callout-danger"><i class="fas fa-shield-halved"></i> This endpoint is restricted to admin users (<code>user.is_admin</code>). Non-admins receive a <code>400</code> error.</div>
+      <table class="custom-table">
+        <thead><tr><th>Field (JSON body)</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>url</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Valid GitHub repository URL (validated by <code>valider_repo_github()</code>)</td></tr>
+          <tr><td><code>license</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>License to apply to all imported rules (e.g. <code>"MIT"</code>)</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/rule/private/import_rules_from_github \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: ADMIN_KEY" \
+  -d '{
+    "url":     "https://github.com/org/yara-rules.git",
+    "license": "MIT"
+  }'</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → { "success": true, "imported": 183, "skipped": 12, "failed": 3 }
+400 → { "success": false, "message": "You have to be an admin to import" }
+400 → { "success": false, "message": "Invalid GitHub URL" }
+500 → { "success": false, "message": "An error occurred while importing from: ...", "error": "..." }</code></pre>
+
+      <!-- ── dumpRules ── -->
+      <h3 class="subsection">POST /api/rule/private/dumpRules</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/api/rule/private/dumpRules</div>
+          <div class="endpoint-desc">Full structured JSON dump of all rules for analysis or integration. All parameters are optional — pass an empty body <code>{}</code> to get everything.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Field (JSON body)</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>format_name</code></td><td>string or list</td><td><code>"yara"</code>, <code>["yara","sigma"]</code>, or <code>["all"]</code> for every format</td></tr>
+          <tr><td><code>created_after</code></td><td>string</td><td>ISO date — <code>"YYYY-MM-DD"</code> or <code>"YYYY-MM-DD HH:MM"</code></td></tr>
+          <tr><td><code>created_before</code></td><td>string</td><td>Same format</td></tr>
+          <tr><td><code>updated_after</code></td><td>string</td><td>Same format</td></tr>
+          <tr><td><code>updated_before</code></td><td>string</td><td>Same format</td></tr>
+          <tr><td><code>top_liked</code></td><td>integer</td><td>Return only the top N most liked rules</td></tr>
+          <tr><td><code>top_disliked</code></td><td>integer</td><td>Return only the top N most disliked rules</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl — dump all rules</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/rule/private/dumpRules \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
+  -d '{}'</code></pre>
+      <div class="code-label">curl — filtered dump</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/rule/private/dumpRules \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
+  -d '{
+    "format_name":    ["yara", "sigma"],
+    "created_after":  "2025-01-01 00:00",
+    "created_before": "2025-12-31 23:59",
+    "top_liked":      10
+  }'</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{
+  "success": true,
+  "message": "Rules dump successfully generated.",
+  "filters_applied": { "format_name": ["yara","sigma"], "top_liked": 10, ... },
+  "data": {
+    "summary_by_format": { "yara": 120, "sigma": 75, "total_rules": 195 },
+    "rules": [
+      {
+        "id": 1, "title": "Example", "format": "yara", "author": "Alice",
+        "created_at": "2025-03-01 12:00", "updated_at": "2025-04-10 09:30",
+        "likes": 12, "dislikes": 0,
+        "to_string": "rule Example { condition: true }",
+        "cve_id": "CVE-2025-1234"
+      }
+    ]
+  }
+}</code></pre>
+      <table class="custom-table">
+        <thead><tr><th>Status</th><th>Condition</th></tr></thead>
+        <tbody>
+          <tr><td><code>200</code></td><td>Dump generated</td></tr>
+          <tr><td><code>400</code></td><td>Invalid JSON body or filter params</td></tr>
+          <tr><td><code>404</code></td><td>No rules match the filters</td></tr>
+          <tr><td><code>403</code></td><td>Missing/invalid API key</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ── search (private) ── -->
+      <h3 class="subsection">POST /api/rule/private/search</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/api/rule/private/search</div>
+          <div class="endpoint-desc">Full-featured rule search identical to the web UI, with field selection, CVE filtering, tag filtering, and optional pagination. All body parameters are optional — combine with AND logic.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>search</code></td><td>string</td><td>—</td><td>Free text across title, description, format, author, content, uuid</td></tr>
+          <tr><td><code>search_field</code></td><td>string</td><td><code>all</code></td><td><code>all</code> · <code>title</code> · <code>content</code></td></tr>
+          <tr><td><code>exact_match</code></td><td>boolean</td><td><code>false</code></td><td>Title uses strict equality; content uses case-sensitive LIKE</td></tr>
+          <tr><td><code>author</code></td><td>string</td><td>—</td><td>Partial, case-insensitive match</td></tr>
+          <tr><td><code>rule_type</code></td><td>string</td><td>—</td><td>yara · sigma · suricata · zeek · crs · nova · nse · wazuh · elastic</td></tr>
+          <tr><td><code>source</code></td><td>string</td><td>—</td><td>Comma-separated for OR: <code>"github.com,internal"</code></td></tr>
+          <tr><td><code>license</code></td><td>string</td><td>—</td><td>Comma-separated for OR: <code>"MIT,GPL"</code></td></tr>
+          <tr><td><code>vulnerabilities</code></td><td>list[string]</td><td>—</td><td>CVE IDs: <code>["CVE-2021-44228"]</code> — validated as <code>CVE-YYYY-NNNNN</code></td></tr>
+          <tr><td><code>tags</code></td><td>list[string]</td><td>—</td><td>Tag names: <code>["malware","apt"]</code></td></tr>
+          <tr><td><code>sort_by</code></td><td>string</td><td><code>newest</code></td><td><code>newest</code> · <code>oldest</code> · <code>most_likes</code> · <code>least_likes</code></td></tr>
+          <tr><td><code>page</code></td><td>integer</td><td>1</td><td>Must be ≥ 1</td></tr>
+          <tr><td><code>per_page</code></td><td>integer</td><td>20</td><td>1–100</td></tr>
+          <tr><td><code>paginate</code></td><td>boolean</td><td><code>true</code></td><td>Set to <code>false</code> to get all results in one shot</td></tr>
+          <tr><td><code>fields</code></td><td>list[string]</td><td>all</td><td>Subset of available fields (see below)</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-tip"><i class="fas fa-list"></i> <strong>Available fields</strong> for <code>fields</code> param: <code>id</code> · <code>title</code> · <code>format</code> · <code>author</code> · <code>license</code> · <code>description</code> · <code>version</code> · <code>source</code> · <code>uuid</code> · <code>original_uuid</code> · <code>creation_date</code> · <code>last_modif</code> · <code>vote_up</code> · <code>vote_down</code> · <code>to_string</code> · <code>cve_id</code> · <code>github_path</code></div>
+      <div class="code-label">curl — typical search</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/rule/private/search \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
+  -d '{
+    "search":   "mimikatz",
+    "rule_type":"yara",
+    "tags":     ["credential_access"],
+    "sort_by":  "most_likes",
+    "page":     1,
+    "per_page": 20
+  }'</code></pre>
+      <div class="code-label">curl — select specific fields + no pagination</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/rule/private/search \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
+  -d '{
+    "rule_type": "sigma",
+    "paginate":  false,
+    "fields":    ["uuid","title","to_string","creation_date"]
+  }'</code></pre>
+      <div class="code-label">response 200 (paginated)</div>
+      <pre><code>{
+  "success":  true,
+  "total":    142,
+  "page":     1,
+  "per_page": 20,
+  "pages":    8,
+  "paginate": true,
+  "rules": [
+    { "uuid": "...", "title": "Mimikatz_Generic", "format": "yara",
+      "author": "Alice", "vote_up": 15, "vote_down": 1, ... }
+  ]
+}</code></pre>
     </section>
 
     <!-- ════════════════════════ API BUNDLE ════════════════════════ -->
@@ -1532,33 +1895,153 @@ flask db upgrade          # Apply pending migrations</code></pre>
         <h2 class="section-title">Bundle API</h2>
       </div>
 
-      <h3 class="subsection">Bundle Public — /api/bundle/public</h3>
+      <!-- ── bundle public search ── -->
+      <h3 class="subsection">GET /api/bundle/public/search</h3>
+      <p>File: <code>app/api/bundle/bundle_public_api.py</code> — No authentication required.</p>
       <div class="endpoint-row">
         <span class="badge-method badge-get">GET</span>
-        <div><div class="endpoint-path">/api/bundle/public/search</div><div class="endpoint-desc">Paginated bundle search (params: search, page, per_page)</div></div>
+        <div>
+          <div class="endpoint-path">/api/bundle/public/search</div>
+          <div class="endpoint-desc">Search public bundles by name. Returns all matching bundles (no pagination).</div>
+        </div>
       </div>
-      <div class="endpoint-row">
-        <span class="badge-method badge-get">GET</span>
-        <div><div class="endpoint-path">/api/bundle/public/&lt;uuid&gt;</div><div class="endpoint-desc">Fetch a single bundle with its rules</div></div>
-      </div>
+      <table class="custom-table">
+        <thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>search</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Keyword to match against bundle name. Empty value returns <code>400</code>.</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -G "http://127.0.0.1:7009/api/bundle/public/search" \
+  --data-urlencode "search=ransomware"</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{
+  "message": "2 bundle(s) found",
+  "bundle_list": [
+    { "id": 7, "name": "Ransomware Detections", "description": "...", "public": true, "score": 10 }
+  ]
+}</code></pre>
 
-      <h3 class="subsection">Bundle Private — /api/bundle/private</h3>
+      <!-- ── bundle private: create ── -->
+      <h3 class="subsection">POST /api/bundle/private/create</h3>
+      <p>File: <code>app/api/bundle/bundle_private_api.py</code> — Requires <code>X-API-KEY</code>.</p>
       <div class="endpoint-row">
         <span class="badge-method badge-post">POST</span>
-        <div><div class="endpoint-path">/api/bundle/private/create</div><div class="endpoint-desc">Create a bundle — body: <code>{name, description, is_public, rules: [uuid…]}</code></div></div>
+        <div>
+          <div class="endpoint-path">/api/bundle/private/create</div>
+          <div class="endpoint-desc">Create a new bundle. The authenticated user becomes the owner.</div>
+        </div>
       </div>
+      <table class="custom-table">
+        <thead><tr><th>Field (JSON body)</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>name</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Non-empty string</td></tr>
+          <tr><td><code>public</code></td><td>boolean</td><td><span class="badge-status badge-auth">Yes</span></td><td>Strict boolean — must be <code>true</code> or <code>false</code> (not a string)</td></tr>
+          <tr><td><code>description</code></td><td>string</td><td>No</td><td>Defaults to empty string</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/bundle/private/create \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
+  -d '{
+    "name":        "My YARA Bundle",
+    "description": "Collection of YARA rules for ransomware detection",
+    "public":      true
+  }'</code></pre>
+      <div class="code-label">response 200</div>
+      <pre><code>{ "message": "Bundle created successfully", "bundle_id": 12 }</code></pre>
+      <table class="custom-table">
+        <thead><tr><th>Status</th><th>Condition</th></tr></thead>
+        <tbody>
+          <tr><td><code>200</code></td><td>Bundle created</td></tr>
+          <tr><td><code>400</code></td><td><code>name</code> missing/invalid, or <code>public</code> is not a boolean</td></tr>
+          <tr><td><code>500</code></td><td>DB error</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ── bundle private: add rule ── -->
+      <h3 class="subsection">GET /api/bundle/private/add_rule_bundle</h3>
       <div class="endpoint-row">
-        <span class="badge-method badge-put">PUT</span>
-        <div><div class="endpoint-path">/api/bundle/private/&lt;uuid&gt;</div><div class="endpoint-desc">Update bundle metadata</div></div>
+        <span class="badge-method badge-get">GET</span>
+        <div>
+          <div class="endpoint-path">/api/bundle/private/add_rule_bundle</div>
+          <div class="endpoint-desc">Add a rule to an existing bundle. Only the bundle owner or an admin can perform this operation.</div>
+        </div>
       </div>
+      <table class="custom-table">
+        <thead><tr><th>Parameter (query)</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>rule_id</code></td><td>integer</td><td><span class="badge-status badge-auth">Yes</span></td><td>ID of the rule to add</td></tr>
+          <tr><td><code>bundle_id</code></td><td>integer</td><td><span class="badge-status badge-auth">Yes</span></td><td>ID of the target bundle (must exist and be yours)</td></tr>
+          <tr><td><code>description</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Comment or note for this rule within the bundle</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl "http://127.0.0.1:7009/api/bundle/private/add_rule_bundle?rule_id=42&bundle_id=7&description=Important+APT+rule" \
+  -H "X-API-KEY: YOUR_KEY"</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → {"success": true,  "message": "Rule added!",                             "toast_class": "success"}
+400 → {"success": false, "message": "Missing rule_id or bundle_id or description","toast_class": "danger"}
+401 → {"success": false, "message": "You don't have the permission to do that!",  "toast_class": "danger"}
+404 → {"success": false, "message": "Bundle not found",                           "toast_class": "danger"}</code></pre>
+
+      <!-- ── bundle private: remove rule ── -->
+      <h3 class="subsection">GET /api/bundle/private/remove_rule_bundle</h3>
       <div class="endpoint-row">
-        <span class="badge-method badge-delete">DELETE</span>
-        <div><div class="endpoint-path">/api/bundle/private/&lt;uuid&gt;</div><div class="endpoint-desc">Delete a bundle</div></div>
+        <span class="badge-method badge-get">GET</span>
+        <div>
+          <div class="endpoint-path">/api/bundle/private/remove_rule_bundle</div>
+          <div class="endpoint-desc">Remove a rule from a bundle. Only the bundle owner or an admin can do this.</div>
+        </div>
       </div>
+      <table class="custom-table">
+        <thead><tr><th>Parameter (query)</th><th>Type</th><th>Required</th></tr></thead>
+        <tbody>
+          <tr><td><code>rule_id</code></td><td>integer</td><td><span class="badge-status badge-auth">Yes</span></td></tr>
+          <tr><td><code>bundle_id</code></td><td>integer</td><td><span class="badge-status badge-auth">Yes</span></td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl "http://127.0.0.1:7009/api/bundle/private/remove_rule_bundle?rule_id=42&bundle_id=7" \
+  -H "X-API-KEY: YOUR_KEY"</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → {"success": true,  "message": "Rule removed!"}
+401 → {"success": false, "message": "You don't have the permission to do that!"}
+404 → {"success": false, "message": "Bundle not found"}
+500 → {"success": false, "message": "Rule not found in this bundle or already removed"}</code></pre>
+
+      <!-- ── bundle private: edit ── -->
+      <h3 class="subsection">POST /api/bundle/private/edit_bundle/&lt;bundle_id&gt;</h3>
       <div class="endpoint-row">
         <span class="badge-method badge-post">POST</span>
-        <div><div class="endpoint-path">/api/bundle/private/&lt;uuid&gt;/rules</div><div class="endpoint-desc">Add rules to bundle — body: <code>{rule_uuids: […]}</code></div></div>
+        <div>
+          <div class="endpoint-path">/api/bundle/private/edit_bundle/&lt;bundle_id&gt;</div>
+          <div class="endpoint-desc">Update a bundle's name and/or description. Only the owner or an admin.</div>
+        </div>
       </div>
+      <table class="custom-table">
+        <thead><tr><th>Path param</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>bundle_id</code></td><td>integer</td><td>ID of the bundle to update</td></tr>
+        </tbody>
+      </table>
+      <table class="custom-table">
+        <thead><tr><th>Field (JSON body)</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>name</code></td><td>string</td><td>New bundle name (optional)</td></tr>
+          <tr><td><code>description</code></td><td>string</td><td>New description (optional)</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/bundle/private/edit_bundle/7 \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
+  -d '{"name": "Updated Bundle Name", "description": "New description"}'</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → {"success": true,  "message": "Bundle updated successfully"}
+401 → {"success": false, "message": "You don't have the permission to do that!"}
+404 → {"success": false, "message": "Bundle not found"}</code></pre>
     </section>
 
     <!-- ════════════════════════ API ACCOUNT ════════════════════════ -->
@@ -1568,26 +2051,149 @@ flask db upgrade          # Apply pending migrations</code></pre>
         <h2 class="section-title">Account API</h2>
       </div>
 
-      <h3 class="subsection">Account Public — /api/account/public</h3>
-      <div class="endpoint-row">
-        <span class="badge-method badge-get">GET</span>
-        <div><div class="endpoint-path">/api/account/public/&lt;username&gt;</div><div class="endpoint-desc">Get public profile: username, level, score, rules count</div></div>
-      </div>
-
-      <h3 class="subsection">Account Private — /api/account/private</h3>
-      <div class="endpoint-row">
-        <span class="badge-method badge-get">GET</span>
-        <div><div class="endpoint-path">/api/account/private/profile</div><div class="endpoint-desc">Get full authenticated user profile</div></div>
-      </div>
+      <!-- ── register ── -->
+      <h3 class="subsection">POST /api/account/public/register</h3>
+      <p>File: <code>app/api/account/account_public_api.py</code> — No authentication required.</p>
       <div class="endpoint-row">
         <span class="badge-method badge-post">POST</span>
-        <div><div class="endpoint-path">/api/account/private/api-key/regenerate</div><div class="endpoint-desc">Regenerate API key (invalidates old key immediately)</div></div>
+        <div>
+          <div class="endpoint-path">/api/account/public/register</div>
+          <div class="endpoint-desc">Create a new Rulezet account. Returns the new user's <code>X-API-KEY</code> on success.</div>
+        </div>
       </div>
+      <table class="custom-table">
+        <thead><tr><th>Field (JSON body)</th><th>Type</th><th>Required</th><th>Constraints</th></tr></thead>
+        <tbody>
+          <tr><td><code>email</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Valid email format, must be unique</td></tr>
+          <tr><td><code>password</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>8–64 chars, at least 1 uppercase, 1 lowercase, 1 digit</td></tr>
+          <tr><td><code>first_name</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Non-empty</td></tr>
+          <tr><td><code>last_name</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Non-empty</td></tr>
+        </tbody>
+      </table>
       <div class="code-label">curl</div>
-      <pre><code>curl -X POST https://your-rulezet/api/account/private/api-key/regenerate \
-  -H "X-API-KEY: &lt;current_key&gt;"
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/account/public/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email":      "analyst@example.com",
+    "password":   "Secur3Pass!",
+    "first_name": "Alice",
+    "last_name":  "Martin"
+  }'</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>201 → { "message": "User registered successfully", "X-API-KEY": "abc123...60chars..." }
+400 → { "message": "Password must contain at least one digit." }
+409 → { "message": "Email already exists" }</code></pre>
 
-# Response: {"new_api_key": "…60 chars…"}</code></pre>
+      <!-- ── login ── -->
+      <h3 class="subsection">POST /api/account/public/login</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/api/account/public/login</div>
+          <div class="endpoint-desc">Authenticate and create a Flask session. Used for browser-based flows; API integrations should use <code>X-API-KEY</code> instead.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>email</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Registered email</td></tr>
+          <tr><td><code>password</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Account password</td></tr>
+          <tr><td><code>remember_me</code></td><td>boolean</td><td>No</td><td>Extends session — must be strict boolean</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/account/public/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "analyst@example.com", "password": "Secur3Pass!", "remember_me": false}'</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → { "message": "Logged in successfully" }
+400 → { "message": "remember_me must be a boolean" }
+401 → { "message": "Invalid email or password" }</code></pre>
+
+      <!-- ── logout ── -->
+      <h3 class="subsection">POST /api/account/public/logout</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/api/account/public/logout</div>
+          <div class="endpoint-desc">Terminate the current Flask session (<code>@login_required</code> — browser session must be active).</div>
+        </div>
+      </div>
+      <div class="code-label">response 200</div>
+      <pre><code>{ "message": "You have been logged out." }</code></pre>
+
+      <!-- ── private: edit ── -->
+      <h3 class="subsection">POST /api/account/private/edit</h3>
+      <p>File: <code>app/api/account/account_private_api.py</code> — Requires active login session (uses <code>@login_required</code>, not API key).</p>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/api/account/private/edit</div>
+          <div class="endpoint-desc">Update the authenticated user's profile. Password update is optional — omit to keep current password.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Field (JSON body)</th><th>Type</th><th>Required</th><th>Constraints</th></tr></thead>
+        <tbody>
+          <tr><td><code>first_name</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Non-empty</td></tr>
+          <tr><td><code>last_name</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Non-empty</td></tr>
+          <tr><td><code>email</code></td><td>string</td><td><span class="badge-status badge-auth">Yes</span></td><td>Valid email, unique</td></tr>
+          <tr><td><code>password</code></td><td>string</td><td>No</td><td>8–64 chars, uppercase + lowercase + digit + special char (<code>@$!%*?&amp;</code>)</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -X POST http://127.0.0.1:7009/api/account/private/edit \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: YOUR_KEY" \
+  -d '{
+    "first_name": "Alice",
+    "last_name":  "Dupont",
+    "email":      "alice@new.com",
+    "password":   "NewP@ssw0rd!"
+  }'</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → { "message": "User updated successfully" }
+400 → { "message": "Password must contain at least one special character (@$!%*?&)" }
+409 → { "message": "Email already registered." }</code></pre>
+
+      <!-- ── favorites ── -->
+      <h3 class="subsection">GET /api/account/private/favorite/get_rules_page_favorite</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-get">GET</span>
+        <div>
+          <div class="endpoint-path">/api/account/private/favorite/get_rules_page_favorite</div>
+          <div class="endpoint-desc">Paginated list of the authenticated user's favourite rules.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Parameter (query)</th><th>Type</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>page</code></td><td>integer</td><td>1</td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">response 200</div>
+      <pre><code>{ "rule": [ { "id": 6, "title": "...", ... } ], "total_pages": 3 }</code></pre>
+
+      <h3 class="subsection">POST /api/account/private/favorite/delete_rule</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/api/account/private/favorite/delete_rule</div>
+          <div class="endpoint-desc">Remove a rule from your favourites list.</div>
+        </div>
+      </div>
+      <table class="custom-table">
+        <thead><tr><th>Parameter (query)</th><th>Type</th><th>Required</th></tr></thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>integer</td><td><span class="badge-status badge-auth">Yes</span></td></tr>
+        </tbody>
+      </table>
+      <div class="code-label">curl</div>
+      <pre><code>curl -X POST "http://127.0.0.1:7009/api/account/private/favorite/delete_rule?id=42" \
+  -H "X-API-KEY: YOUR_KEY"</code></pre>
+      <div class="code-label">responses</div>
+      <pre><code>200 → {"success": true,  "message": "Rule deleted!"}
+403 → {"success": false, "message": "Access denied"}</code></pre>
     </section>
 
     <!-- ════════════════════════ TESTING ════════════════════════ -->
