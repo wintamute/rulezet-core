@@ -401,6 +401,21 @@ label,
   color: var(--text-color) !important;
 }
 
+.nav-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: .4rem;
+  color: var(--text-color);
+  border-radius: 8px;
+  transition: background .15s, color .15s;
+  text-decoration: none;
+}
+.nav-icon-btn:hover {
+  background: var(--light-bg-color);
+  color: var(--text-color);
+}
+
 /* Dropdown animation */
 .animate {
   animation-duration: 0.2s;
