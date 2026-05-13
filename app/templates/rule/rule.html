@@ -2,393 +2,387 @@
 {% block head %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/external_library/codemirror/codemirror.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/external_library/codemirror/monokai.min.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/idea.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/yaml/yaml.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/matchbrackets.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/display/autorefresh.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/closebrackets.js"></script>
+
+
+<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/rule/base/rule.css') }}">
 {% endblock %}
 {% block content %}
-<div class="container mt-4" v-cloak>
-      <h2 class="fw-bold mb-1 text-center text-primary">Create a Rule</h2>
-      <div class="mx-auto mb-4" style="width: 60px; height: 4px; background-color: #0d6efd; border-radius: 2px;"></div>
-      <p class="text-muted mt-2">
-            Use the form below to manually submit a new detection rule, parse an existing rule, or import rules from a
-            GitHub repository. Select the appropriate tab to get started.
-      </p>
-      <div>
-            <ul class="nav nav-underline justify-content-center w-100 mb-3" id="exampleTabs" role="tablist">
-                  <li class="nav-item flex-fill text-center">
-                        <a class="nav-link active" id="chap1-tab" data-bs-toggle="tab" href="#chap1-pane" role="tab"
-                              aria-controls="chap1-pane" aria-selected="true" style="color: var(--text-color);">
-                              Manual Submission
-                        </a>
-                  </li>
-                  <li class="nav-item flex-fill text-center">
-                        <a class="nav-link" id="chap2-tab" data-bs-toggle="tab" href="#chap2-pane" role="tab"
-                              aria-controls="chap2-pane" aria-selected="false" style="color: var(--text-color);">
-                              Parse a Rule
-                        </a>
-                  </li>
-                  <li class="nav-item flex-fill text-center">
-                        <a class="nav-link" id="chap3-tab" data-bs-toggle="tab" href="#chap3-pane" role="tab"
-                              aria-controls="chap3-pane" aria-selected="false" style="color: var(--text-color);">
-                              GitHub URL
-                        </a>
-                  </li>
-                  <li class="nav-item flex-fill text-center">
-                        <a class="nav-link" id="chap4-tab" data-bs-toggle="tab" href="#chap4-pane" role="tab"
-                              aria-controls="chap4-pane" aria-selected="false" style="color: var(--text-color);">
-                              From File
-                        </a>
-                  </li>
-            </ul>
+<div class="container mt-4" v-cloak >
 
-            <div class="tab-content" id="exampleTabsContent">
-                  <div class="tab-pane fade show active" id="chap1-pane" role="tabpanel" aria-labelledby="chap1-tab">
-                        <div class="card border-0 shadow-sm rounded-4">
-                              <div class="card-body p-4">
-                                    <form action="" method="post" id="form">
-                                          {{ form.hidden_tag() }}
-
-                                          <div class="row g-3 mb-4">
-                                                <div class="col-md-6">
-                                                      <div class="form-group">
-                                                            <label class="form-label fw-bold text-dark">
-                                                                  {{ form.title.label.text }} <span
-                                                                        class="text-danger">*</span>
-                                                            </label>
-                                                            {{ form.title(class_="form-control rounded-3",
-                                                            placeholder="Enter the rule title...") }}
-                                                            {% if form.title.errors %}
-                                                            <div class="invalid-feedback d-block">{{
-                                                                  form.title.errors[0] | safe }}</div>
-                                                            {% endif %}
-                                                      </div>
-                                                </div>
-
-                                                <div class="col-md-6">
-                                                      <div class="form-group">
-                                                            <label class="form-label fw-bold text-dark">
-                                                                  {{ form.format.label.text }} <span
-                                                                        class="text-danger">*</span>
-                                                            </label>
-                                                            {{ form.format(class_="form-select rounded-3") }}
-                                                            {% if form.format.errors %}
-                                                            <div class="invalid-feedback d-block">{{
-                                                                  form.format.errors[0] | safe }}</div>
-                                                            {% endif %}
-                                                      </div>
-                                                </div>
-                                          </div>
-
-                                          <div class="row g-3 mb-4">
-                                                <div class="col-md-4">
-                                                      <div class="form-group">
-                                                            <label class="form-label fw-bold text-dark">{{
-                                                                  form.license.label.text }}</label>
-                                                            {{ form.license(class_="form-control rounded-3",
-                                                            id="license-select") }}
-                                                      </div>
-                                                </div>
-                                                <div class="col-md-4">
-                                                      <div class="form-group">
-                                                            <label class="form-label fw-bold text-dark">{{
-                                                                  form.source.label.text }}</label>
-                                                            {{ form.source(class_="form-control rounded-3",
-                                                            placeholder="Source URL...") }}
-                                                      </div>
-                                                </div>
-                                                <div class="col-md-4">
-                                                      <version-picker v-model="formData.version" label="Version">
-                                                      </version-picker>
-                                                      <input type="hidden" name="version" :value="formData.version">
-                                                </div>
-                                          </div>
-
-                                          <div class="row mb-4">
-                                                <div class="form-group">
-                                                      <tag-input v-model="selectedTags" label="Rule Tags"
-                                                            :user-id="{{current_user.id}}">
-                                                            placeholder="Search and add tags...">
-                                                      </tag-input>
-
-                                                      <input type="hidden" name="tags"
-                                                            :value="JSON.stringify(selectedTags)">
-                                                </div>
-                                          </div>
-                                          <div class="row ">
-                                                <vulnerability-input v-model="detectedVulnerabilities"
-                                                      target-type="rule" label="Vulnerabilities (CVE, GHSA...)">
-                                                </vulnerability-input>
-                                                <input type="hidden" name="vulnerabilities"
-                                                      :value="JSON.stringify(detectedVulnerabilities)">
-                                          </div>
-
-                                          <div class="row g-3 mb-4">
-                                                <div class="col-md-12">
-                                                      <div class="form-group">
-                                                            <label class="form-label fw-bold text-dark">{{
-                                                                  form.description.label.text }}</label>
-                                                            {{ form.description(class_="form-control rounded-3", rows=3,
-                                                            placeholder="Describe the purpose of this rule...") }}
-                                                      </div>
-                                                </div>
-                                                <div class="col-md-12">
-                                                      <div class="form-group">
-                                                            <label class="form-label fw-bold text-dark">{{
-                                                                  form.original_uuid.label.text }}</label>
-                                                            {{ form.original_uuid(class_="form-control rounded-3",
-                                                            placeholder="Optional: Existing UUID if any...") }}
-                                                      </div>
-                                                </div>
-                                          </div>
-
-                                          <div class="mb-4">
-                                                <div class="form-group">
-                                                      <label class="form-label fw-bold text-dark">
-                                                            {{ form.to_string.label.text }} <span
-                                                                  class="text-danger">*</span>
-                                                      </label>
-                                                      <div class="border rounded-3 overflow-hidden">
-                                                            <textarea id="editor"
-                                                                  name="to_string">{{ (form.to_string.data or '') | e }}</textarea>
-                                                      </div>
-                                                      {% if form.to_string.errors %}
-                                                      <div class="invalid-feedback d-block">{{ form.to_string.errors[0]
-                                                            | safe }}</div>
-                                                      {% endif %}
-                                                </div>
-                                          </div>
-
-                                          {% if error %}
-                                          <div
-                                                class="alert alert-danger rounded-3 d-flex align-items-center mb-4 border-0 shadow-sm">
-                                                <i class="fas fa-exclamation-triangle me-3 fa-lg"></i>
-                                                <div>{{ error }}</div>
-                                          </div>
-                                          {% endif %}
-
-                                          <div class="text-center">
-                                                {{ form.submit(class='btn btn-primary') }}
-                                          </div>
-                                    </form>
-                              </div>
-                        </div>
-                  </div>
-                  <div class="tab-pane fade" id="chap2-pane" role="tabpanel" aria-labelledby="chap2-tab">
-                        <div class="card card-body shadow-sm">
-                              <form method="POST" action="{{ url_for('rule.parse_rule') }}" class="d-flex flex-column"
-                                    id="github-form" novalidate>
-
-                                    <div id="flash-messages" class="mt-2">
-                                          {% for category, message in get_flashed_messages(with_categories=True) %}
-                                          <div class="alert alert-{{ category }} alert-dismissible fade show"
-                                                role="alert">
-                                                {{ message }}
-                                                <button type="button" class="btn-close" data-bs-dismiss="alert"
-                                                      aria-label="Close"></button>
-                                          </div>
-                                          {% endfor %}
-                                    </div>
-
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-
-                                    <input type="text" name="fakeusernameremembered" id="fakeusernameremembered"
-                                          style="display:none">
-                                    <input type="password" name="fakepasswordremembered" id="fakepasswordremembered"
-                                          style="display:none">
-
-                                    <div class="mb-3">
-                                          <strong><label for="content" class="form-label">Rule content<span
-                                                            style="color:red">*</span></label></strong>
-                                          <textarea id="content" name="content" rows="6"
-                                                placeholder="Paste your rule content here..." required></textarea>
-                                    </div>
-
-                                    <div class="mb-3">
-                                          <strong><label for="format" class="form-label">Rule format <span
-                                                            style="color:red">*</span></label></strong>
-                                          <select v-model="ruleType" name="format" id="format"
-                                                class="form-select form-select-sm " required>
-                                                <option v-for="format in rules_formats" :value="format.name"
-                                                      :key="format.id">
-                                                      [[ format.name ]]
-                                                </option>
-                                          </select>
-                                    </div>
-
-                                    <div class="text-center">
-                                          <button type="submit" class="btn btn-primary" id="submit-button">
-                                                Parse
-                                          </button>
-                                    </div>
-                              </form>
-
-                        </div>
-                  </div>
-                  <div class="tab-pane fade" id="chap3-pane" role="tabpanel" aria-labelledby="chap3-tab">
-
-                        <div class="card p-4 shadow-sm mb-3">
-                              <h5 class="mb-2 d-flex align-items-center">
-                                    <strong>
-                                          <label for="url" class="form-label m-0">
-                                                Import rules from GitHub project with URL
-                                          </label>
-                                          <span style="color:red">*</span>
-                                    </strong>
-                                    <i class="fas fa-info-circle ms-2 text-primary" data-bs-toggle="collapse"
-                                          data-bs-target="#ruleInfo" role="button" aria-expanded="false"
-                                          aria-controls="ruleInfo" style="cursor:pointer;" title="More info"></i>
-                              </h5>
-
-                              <div class="collapse" id="ruleInfo">
-                                    <div class="alert alert-info mt-2">
-                                          The script will attempt to parse the rules from the GitHub repository
-                                          according to their format (YARA, Sigma, Zeek, Suricata).
-                                          If any issues are detected during the rule validation, you will have the
-                                          opportunity to review and correct them in the "Bad Rules" section.
-                                    </div>
-                              </div>
-
-                              {% if current_user.is_admin() %}
-                              <div>
-                                    <div class="mb-3">
-                                          <input type="text" name="url" class="form-control w-100" id="url"
-                                                placeholder="https://github.com/your_username/project.git"
-                                                v-model="url">
-                                    </div>
-
-                                    <div id="github-url-error" style="color: brown;"></div>
-
-                                    <div class="mb-3">
-                                          <strong><label for="license-select"
-                                                      class="form-label">License</label></strong>
-                                          <select id="license-select" name="license" class="form-control"
-                                                v-model="selectedLicense">
-                                                <option disabled value="">No license</option>
-                                                <option v-for="item in license" :key="item" :value="item">[[ item ]]
-                                                </option>
-                                          </select>
-                                    </div>
-
-                                    <button v-if="!is_loading" type="submit" class="btn btn-primary"
-                                          @click="import_git_url()">
-                                          <i class="fas fa-paper-plane"></i> Send
-                                    </button>
-
-                                    <button v-else class="btn btn-primary" type="button" disabled>
-                                          <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                                          <span role="status">Loading...</span>
-                                    </button>
-                              </div>
-                              {% else %}
-                              <div>
-                                    <span class="mt-2">
-                                          <strong>You need to be an admin to import rules from GitHub.</strong>
-                                    </span>
+  <!-- ── Page header ── -->
+  <h2 class="fw-bold mb-1 text-center text-primary">Add a Detection Rule</h2>
+  <div class="mx-auto mb-2" style="width: 60px; height: 4px; background-color: #0d6efd; border-radius: 2px;"></div>
+  <p class="text-center mb-4" style="color: var(--subtle-text-color); font-size: .875rem;">
+    Manually submit a rule, parse existing content, or import from GitHub / ZIP.
+  </p>
 
 
 
-                                    <div class="mt-2">
-                                          <a href="/account/login" class="btn btn-primary">Login</a>
-                                    </div>
 
-                              </div>
-                              {% endif %}
-                        </div>
-                  </div>
-                  <div class="tab-pane fade" id="chap4-pane" role="tabpanel" aria-labelledby="chap4-tab">
-                        <!-- <div class="card card-body shadow-sm">
-                              <form action="/rule/import_rules_from_zip" method="post" enctype="multipart/form-data">
-                                    <div id="flash-messages" class="mt-2">
-                                          {% for category, message in get_flashed_messages(with_categories=True) %}
-                                          <div class="alert alert-{{ category }} alert-dismissible fade show"
-                                                role="alert">
-                                                {{ message }}
-                                                <button type="button" class="btn-close" data-bs-dismiss="alert"
-                                                      aria-label="Close"></button>
-                                          </div>
-                                          {% endfor %}
-                                    </div>
+ <ul class="nav nav-underline justify-content-center w-100 mb-3" id="createTabs" role="tablist">                                                                                       
+      <li class="nav-item flex-fill text-center">                                                                                                                                       
+        <a class="nav-link active" id="chap1-tab" data-bs-toggle="tab" href="#chap1-pane" role="tab"                                                                                    
+          aria-controls="chap1-pane" aria-selected="true" style="color: var(--text-color);">                                                                                            
+          <i class="fas fa-pen-to-square"></i> Manual                                                                                                                                   
+        </a>                                                                                                                                                                            
+      </li>                                                                                                                                                                             
+      <li class="nav-item flex-fill text-center">                                                                                                                                       
+        <a class="nav-link" id="chap2-tab" data-bs-toggle="tab" href="#chap2-pane" role="tab"                                                                                           
+          aria-controls="chap2-pane" aria-selected="false" style="color: var(--text-color);">                                                                                           
+          <i class="fas fa-wand-magic-sparkles"></i> Parse                                                                                                                              
+        </a>                                                                                                                                                                            
+      </li>                                                                                                                                                                             
+      <li class="nav-item flex-fill text-center">                                                                                                                                       
+        <a class="nav-link" id="chap3-tab" data-bs-toggle="tab" href="#chap3-pane" role="tab"                                                                                           
+          aria-controls="chap3-pane" aria-selected="false" style="color: var(--text-color);">                                                                                           
+          <i class="fab fa-github"></i> GitHub                                                                                                                                          
+        </a>                                                                                                                                                                            
+      </li>                                                                                                                                                                             
+      <li class="nav-item flex-fill text-center">                                                                                                                                       
+        <a class="nav-link" id="chap4-tab" data-bs-toggle="tab" href="#chap4-pane" role="tab"                                                                                           
+          aria-controls="chap4-pane" aria-selected="false" style="color: var(--text-color);">                                                                                           
+          <i class="fas fa-file-zipper"></i> From File                                                                                                                                  
+        </a>                                                                                                                                                                            
+      </li>                                                                                                                                                                             
+    </ul>
+  <!-- ═══════════════════════════ TAB CONTENT ═══════════════════════════ -->
+  <div class="tab-content" id="createTabsContent">
 
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                                    <input type="file" name="zipfile" accept=".zip">
-                                    <button type="submit">Upload a zip file</button>
-                              </form>
+    <!-- ── Tab 1 : Manual Submission ── -->
+    <div class="tab-pane fade show active" id="chap1-pane" role="tabpanel" aria-labelledby="chap1-tab">
+      <div class="card border-0 card_detail border-top shadow-lg mb-4" style="border-radius: 12px;">
+        <div class="card-watermark-detail"><i class="fas fa-pen-to-square"></i></div>
+        <div class="card-body p-4" style="position: relative; z-index: 1;">
+        <form action="" method="post" id="form">
+          {{ form.hidden_tag() }}
 
-                        </div> -->
-                        <div class="card p-4 shadow-sm mb-3">
-                              <h5 class="mb-2 d-flex align-items-center">
-                                    <strong>
-                                          <label for="zipfile" class="form-label m-0">
-                                                Import rules from ZIP file
-                                          </label>
-                                          <span style="color:red">*</span>
-                                    </strong>
-                                    <i class="fas fa-info-circle ms-2 text-primary" data-bs-toggle="collapse"
-                                          data-bs-target="#zipInfo" role="button" aria-expanded="false"
-                                          aria-controls="zipInfo" style="cursor:pointer;" title="More info"></i>
-                              </h5>
-
-                              <div class="collapse" id="zipInfo">
-                                    <div class="alert alert-info mt-2">
-                                          Upload a ZIP archive containing a folder of YARA, Sigma, Zeek or Suricata
-                                          rules.
-                                          The system will automatically parse and classify them.
-                                    </div>
-                              </div>
-
-                              {% if current_user.is_admin() %}
-                              <div>
-
-                                    <!-- Input ZIP -->
-                                    <div class="mb-3">
-                                          <input type="file" name="zipfile" id="zipfile" class="form-control w-100"
-                                                accept=".zip" @change="fileZip = $event.target.files[0]">
-                                    </div>
-
-                                    <div id="zipfile-error" style="color:brown;"></div>
-
-                                    <!-- License -->
-                                    <div class="mb-3">
-                                          <strong><label for="license-select-zip" class="form-label">
-                                                      License
-                                                </label></strong>
-
-                                          <select id="license-select-zip" name="license" class="form-control"
-                                                v-model="selectedLicenseZip">
-                                                <option disabled value="">No license</option>
-                                                <option v-for="item in license" :key="item" :value="item">
-                                                      [[ item ]]
-                                                </option>
-                                          </select>
-                                    </div>
-
-                                    <button v-if="!is_loading_zip" type="submit" class="btn btn-primary"
-                                          @click="import_zip()">
-                                          <i class="fas fa-file-archive"></i> Send ZIP
-                                    </button>
-
-                                    <button v-else class="btn btn-primary" type="button" disabled>
-                                          <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                                          <span role="status">Uploading...</span>
-                                    </button>
-
-                              </div>
-
-                              {% else %}
-                              <div>
-                                    <strong>You need to be an admin to import rules from ZIP.</strong>
-                                    <div class="mt-2">
-                                          <a href="/account/login" class="btn btn-primary">Login</a>
-                                    </div>
-                              </div>
-                              {% endif %}
-                        </div>
-
-                  </div>
+          <!-- Identity -->
+          <p class="form-section-title"><i class="fas fa-id-card me-1"></i>Identity</p>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <div class="d-flex align-items-center gap-1 mb-1">
+                <label class="form-label-styled mb-0" for="title">{{ form.title.label.text }}<span class="req-badge">required</span></label>
+                <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" 
+                data-bs-title="Unique name that identifies this rule across the platform.">?</button>
+              </div>
+              {{ form.title(class_="form-control", placeholder="e.g. Detect_Mimikatz_Sekurlsa") }}
+              {% if form.title.errors %}
+              <div class="invalid-feedback d-block">{{ form.title.errors[0] | safe }}</div>
+              {% endif %}
             </div>
+            <div class="col-md-6">
+              <div class="d-flex align-items-center gap-1 mb-1">
+                <label class="form-label-styled mb-0" for="format">{{ form.format.label.text }}<span class="req-badge">required</span></label>
+                <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Detection format — defines which parser validates the rule content.">?</button>
+              </div>
+              {{ form.format(class_="form-select") }}
+              {% if form.format.errors %}
+              <div class="invalid-feedback d-block">{{ form.format.errors[0] | safe }}</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Metadata -->
+          <p class="form-section-title"><i class="fas fa-tags me-1"></i>Metadata</p>
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <div class="d-flex align-items-center gap-1 mb-1">
+                <label class="form-label-styled mb-0" for="license-select">{{ form.license.label.text }}<span class="opt-badge">optional</span></label>
+                <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Legal license for this rule (e.g. MIT, GPL-3.0).">?</button>
+              </div>
+              {{ form.license(class_="form-select", id="license-select") }}
+            </div>
+            <div class="col-md-4">
+              <div class="d-flex align-items-center gap-1 mb-1">
+                <label class="form-label-styled mb-0" for="source">{{ form.source.label.text }}<span class="opt-badge">optional</span></label>
+                <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="URL or name of the original source.">?</button>
+              </div>
+              {{ form.source(class_="form-control", placeholder="https://github.com/org/repo") }}
+            </div>
+            <div class="col-md-4">
+              <version-picker v-model="formData.version" label="Version"></version-picker>
+              <input type="hidden" name="version" :value="formData.version">
+            </div>
+          </div>
+
+          <!-- Classification -->
+          <p class="form-section-title mt-2"><i class="fas fa-layer-group me-1"></i>Classification</p>
+          <div class="row mb-3">
+            <div class="col-12">
+              <tag-input v-model="selectedTags" label="Rule Tags" :user-id="{{current_user.id}}"
+                placeholder="Search and add tags..."></tag-input>
+              <input type="hidden" name="tags" :value="JSON.stringify(selectedTags)">
+            </div>
+          </div>
+          <div class="row mb-4">
+            <div class="col-12">
+              <vulnerability-input v-model="detectedVulnerabilities" target-type="rule"
+                label="Vulnerabilities (CVE, GHSA...)"></vulnerability-input>
+              <input type="hidden" name="vulnerabilities" :value="JSON.stringify(detectedVulnerabilities)">
+            </div>
+          </div>
+
+          <!-- Description & UUID -->
+          <p class="form-section-title"><i class="fas fa-align-left me-1"></i>Description &amp; Reference</p>
+          <div class="row g-3 mb-4">
+            <div class="col-md-12">
+              <div class="d-flex align-items-center gap-1 mb-1">
+                <label class="form-label-styled mb-0" for="description">{{ form.description.label.text }}<span class="opt-badge">optional</span></label>
+                <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Explain the threat scenario this rule covers. Markdown is not rendered.">?</button>
+              </div>
+              {{ form.description(class_="form-control", rows=3, placeholder="Describe what this rule detects and why it matters...") }}
+            </div>
+            <div class="col-md-12">
+              <div class="d-flex align-items-center gap-1 mb-1">
+                <label class="form-label-styled mb-0" for="original_uuid">{{ form.original_uuid.label.text }}<span class="opt-badge">optional</span></label>
+                <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Preserve the UUID from the original source system. Leave blank to auto-generate.">?</button>
+              </div>
+              {{ form.original_uuid(class_="form-control", placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000") }}
+            </div>
+          </div>
+
+          <!-- Rule Content -->
+          <p class="form-section-title"><i class="fas fa-code me-1"></i>Rule Content</p>
+          <div class="mb-4">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <label class="form-label-styled mb-0" for="editor">{{ form.to_string.label.text }}<span class="req-badge">required</span></label>
+              <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Paste the full rule content. Syntax is validated against the selected format before saving.">?</button>
+            </div>
+            <div class="border rounded-3 overflow-hidden shadow-sm">
+              <textarea id="editor" name="to_string">{{ (form.to_string.data or '') | e }}</textarea>
+            </div>
+            {% if form.to_string.errors %}
+            <div class="invalid-feedback d-block mt-1">{{ form.to_string.errors[0] | safe }}</div>
+            {% endif %}
+          </div>
+
+          {% if error %}
+          <div class="alert border-0 rounded-3 d-flex align-items-center mb-4 shadow-sm"
+            style="background:rgba(220,53,69,.1);color:#dc3545;">
+            <i class="fas fa-circle-exclamation me-3 fa-lg"></i>
+            <div>{{ error }}</div>
+          </div>
+          {% endif %}
+
+          <div class="d-flex justify-content-end">
+              <button type="submit" class="btn btn-primary px-4" style="border-radius:8px;">
+                  <i class="fa-solid fa-floppy-disk me-2"></i>{{ form.submit.label.text }}
+              </button>
+          </div>
+        </form>
+        </div>
       </div>
+    </div>
+
+    <!-- ── Tab 2 : Parse a Rule ── -->
+    <div class="tab-pane fade" id="chap2-pane" role="tabpanel" aria-labelledby="chap2-tab">
+      <div class="card border-0 card_detail border-top shadow-lg mb-4" style="border-radius: 12px;">
+        <div class="card-watermark-detail"><i class="fas fa-wand-magic-sparkles"></i></div>
+        <div class="card-body p-4" style="position: relative; z-index: 1;">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <div class="tab-icon" style="background:rgba(16,185,129,.12);color:#10b981;">
+            <i class="fas fa-wand-magic-sparkles"></i>
+          </div>
+          <div>
+            <h6 class="mb-0 fw-bold" style="color:var(--text-color);">Parse &amp; Auto-fill</h6>
+            <small style="color:var(--muted-text-color,#6c757d);">Paste a raw rule and Rulezet will extract its metadata automatically.</small>
+          </div>
+        </div>
+        <hr style="border-color:var(--border-color);margin:1rem 0;">
+
+        <form method="POST" action="{{ url_for('rule.parse_rule') }}" class="d-flex flex-column" id="github-form" novalidate>
+
+          <div id="flash-messages" class="mt-2">
+            {% for category, message in get_flashed_messages(with_categories=True) %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+          </div>
+
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <input type="text"     name="fakeusernameremembered" id="fakeusernameremembered" style="display:none">
+          <input type="password" name="fakepasswordremembered" id="fakepasswordremembered" style="display:none">
+
+          <div class="mb-3">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <label class="form-label-styled mb-0" for="content">Rule content<span class="req-badge">required</span></label>
+              <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Supports YARA, Sigma, Suricata, Zeek, CRS, Wazuh, Nova, NSE, Elastic.">?</button>
+            </div>
+            <div class="border rounded-3 overflow-hidden shadow-sm">
+              <textarea id="content" name="content" rows="6" placeholder="Paste your rule content here..." required></textarea>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <label class="form-label-styled mb-0" for="format">Rule format<span class="req-badge">required</span></label>
+              <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Select the format that matches the pasted content.">?</button>
+            </div>
+            <select v-model="ruleType" name="format" id="format" class="form-select" required>
+              <option v-for="format in rules_formats" :value="format.name" :key="format.id">[[ format.name ]]</option>
+            </select>
+          </div>
+
+          <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-success px-4" id="submit-button" style="border-radius:8px;">
+              <i class="fas fa-wand-magic-sparkles me-2"></i>Parse Rule
+            </button>
+          </div>
+        </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab 3 : GitHub URL ── -->
+    <div class="tab-pane fade" id="chap3-pane" role="tabpanel" aria-labelledby="chap3-tab">
+      <div class="card border-0 card_detail border-top shadow-lg mb-4" style="border-radius: 12px;">
+        <div class="card-watermark-detail"><i class="fab fa-github"></i></div>
+        <div class="card-body p-4" style="position: relative; z-index: 1;">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <div class="tab-icon" style="background:rgba(0,0,0,.07);color:var(--text-color);">
+            <i class="fab fa-github"></i>
+          </div>
+          <div>
+            <h6 class="mb-0 fw-bold" style="color:var(--text-color);">Import from GitHub</h6>
+            <small style="color:var(--muted-text-color,#6c757d);">Clone a repository and bulk-import all supported detection rules.</small>
+          </div>
+        </div>
+        <hr style="border-color:var(--border-color);margin:1rem 0;">
+
+        <!-- Info callout -->
+        <div class="d-flex align-items-start gap-2 p-3 mb-4 rounded-3" style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);">
+          <i class="fas fa-circle-info mt-1" style="color:#3b82f6;flex-shrink:0;"></i>
+          <div style="font-size:.83rem;color:var(--text-color);">
+            The importer walks every file in the repository and tries to parse each one using the matching format engine.
+            Rules that fail validation are saved in <strong>Bad Rules</strong> for manual review rather than discarded.
+          </div>
+        </div>
+
+        {% if current_user.is_admin() %}
+        <div>
+          <div class="mb-3">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <label class="form-label-styled mb-0" for="url">Repository URL<span class="req-badge">required</span></label>
+              <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Must be a public GitHub repository URL ending in .git.">?</button>
+            </div>
+            <div class="input-group">
+              <span class="input-group-text" style="background:var(--light-bg-color);border-color:var(--border-color);color:var(--muted-text-color,#6c757d);">
+                <i class="fab fa-github"></i>
+              </span>
+              <input type="text" name="url" class="form-control" id="url"
+                placeholder="https://github.com/your_username/project.git" v-model="url">
+            </div>
+            <div id="github-url-error" class="form-hint" style="color:#dc3545;"></div>
+          </div>
+
+          <div class="mb-4">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <label class="form-label-styled mb-0" for="license-select">License<span class="opt-badge">optional</span></label>
+              <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Applied to every imported rule. Leave blank if not applicable.">?</button>
+            </div>
+            <select id="license-select" name="license" class="form-select" v-model="selectedLicense">
+              <option disabled value="">Select a license…</option>
+              <option v-for="item in license" :key="item" :value="item">[[ item ]]</option>
+            </select>
+          </div>
+
+          <div class="d-flex justify-content-end">
+            <button v-if="!is_loading" type="button" class="btn btn-primary px-4" @click="import_git_url()" style="border-radius:8px;">
+              <i class="fas fa-cloud-download-alt me-2"></i>Import Rules
+            </button>
+            <button v-else class="btn btn-primary px-4" type="button" disabled style="border-radius:8px;">
+              <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Importing…
+            </button>
+          </div>
+        </div>
+        {% else %}
+        <div class="admin-gate">
+          <div><i class="fas fa-lock"></i></div>
+          <p class="fw-semibold mb-1" style="color:var(--text-color);">Admin access required</p>
+          <p class="mb-3" style="font-size:.83rem;">Importing rules from GitHub is restricted to administrators.</p>
+          <a href="/account/login" class="btn btn-primary btn-sm" style="border-radius:8px;">Sign in as admin</a>
+        </div>
+        {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab 4 : From File (ZIP) ── -->
+    <div class="tab-pane fade" id="chap4-pane" role="tabpanel" aria-labelledby="chap4-tab">
+      <div class="card border-0 card_detail border-top shadow-lg mb-4" style="border-radius: 12px;">
+        <div class="card-watermark-detail"><i class="fas fa-file-zipper"></i></div>
+        <div class="card-body p-4" style="position: relative; z-index: 1;">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <div class="tab-icon" style="background:rgba(245,158,11,.12);color:#f59e0b;">
+            <i class="fas fa-file-zipper"></i>
+          </div>
+          <div>
+            <h6 class="mb-0 fw-bold" style="color:var(--text-color);">Import from ZIP Archive</h6>
+            <small style="color:var(--muted-text-color,#6c757d);">Upload a ZIP containing a folder of detection rule files.</small>
+          </div>
+        </div>
+        <hr style="border-color:var(--border-color);margin:1rem 0;">
+
+        <!-- Info callout -->
+        <div class="d-flex align-items-start gap-2 p-3 mb-4 rounded-3" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);">
+          <i class="fas fa-circle-info mt-1" style="color:#f59e0b;flex-shrink:0;"></i>
+          <div style="font-size:.83rem;color:var(--text-color);">
+            Upload a <code>.zip</code> archive containing YARA, Sigma, Suricata, Zeek or other supported rule files.
+            The system will automatically classify each file by format and import valid rules.
+          </div>
+        </div>
+
+        {% if current_user.is_admin() %}
+        <div>
+          <div class="mb-3">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <label class="form-label-styled mb-0" for="zipfile">ZIP Archive<span class="req-badge">required</span></label>
+              <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Only .zip files are accepted. Max recommended size: 50 MB.">?</button>
+            </div>
+            <input type="file" name="zipfile" id="zipfile" class="form-control"
+              accept=".zip" @change="fileZip = $event.target.files[0]">
+            <div id="zipfile-error" class="form-hint" style="color:#dc3545;"></div>
+          </div>
+
+          <div class="mb-4">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <label class="form-label-styled mb-0" for="license-select-zip">License<span class="opt-badge">optional</span></label>
+              <button type="button" class="btn btn-secondary btn-sm tooltip-btn" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Applied to every rule extracted from the archive.">?</button>
+            </div>
+            <select id="license-select-zip" name="license" class="form-select" v-model="selectedLicenseZip">
+              <option disabled value="">Select a license…</option>
+              <option v-for="item in license" :key="item" :value="item">[[ item ]]</option>
+            </select>
+          </div>
+
+          <div class="d-flex justify-content-end">
+            <button v-if="!is_loading_zip" type="button" class="btn btn-warning px-4" @click="import_zip()" style="border-radius:8px;">
+              <i class="fas fa-file-import me-2"></i>Upload &amp; Import
+            </button>
+            <button v-else class="btn btn-warning px-4" type="button" disabled style="border-radius:8px;">
+              <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Uploading…
+            </button>
+          </div>
+        </div>
+        {% else %}
+        <div class="admin-gate">
+          <div><i class="fas fa-lock"></i></div>
+          <p class="fw-semibold mb-1" style="color:var(--text-color);">Admin access required</p>
+          <p class="mb-3" style="font-size:.83rem;">Importing rules from a ZIP file is restricted to administrators.</p>
+          <a href="/account/login" class="btn btn-primary btn-sm" style="border-radius:8px;">Sign in as admin</a>
+        </div>
+        {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-content -->
 </div>
 {% endblock %}
 
@@ -436,29 +430,36 @@
 
 
       $(document).ready(function () {
-            $('#license-select').select2({
-                  placeholder: "Search for a license",
-                  allowClear: true,
-                  width: '100%'
-            });
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+                  new bootstrap.Tooltip(el, { trigger: 'hover' })
+            );
+
+            const isDark = document.body.classList.contains('dark-mode');
+            const cmTheme = isDark ? 'dracula' : 'idea';
 
             const editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
                   lineNumbers: true,
                   mode: "yaml",
-                  theme: "monokai",
-                  matchBrackets: true,
-                  autoRefresh: true
+                  theme: cmTheme,
+                  autoCloseBrackets: true,
+                  lineWrapping: true
             });
 
             const editor2 = CodeMirror.fromTextArea(document.getElementById("content"), {
                   lineNumbers: true,
                   mode: "yaml",
-                  theme: "monokai",
-                  matchBrackets: true,
-                  autoRefresh: true
+                  theme: cmTheme,
+                  autoCloseBrackets: true,
+                  lineWrapping: true
             });
 
-
+            const cmObserver = new MutationObserver(() => {
+                  const dark = document.body.classList.contains('dark-mode');
+                  const theme = dark ? 'dracula' : 'idea';
+                  editor.setOption('theme', theme);
+                  editor2.setOption('theme', theme);
+            });
+            cmObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
       });
 
 

@@ -411,6 +411,7 @@ label,
   transition: background .15s, color .15s;
   text-decoration: none;
 }
+
 .nav-icon-btn:hover {
   background: var(--light-bg-color);
   color: var(--text-color);
