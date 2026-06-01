@@ -1339,63 +1339,111 @@ def get_total_change_to_check_admin() -> int:
 
 # Create
 
-def add_comment_core(rule_id, content , user) -> tuple[bool, str, User]:
-    """Add a new comment to a rule"""
+def add_comment_core(rule_id, content, user, parent_comment_id=None):
     if not content.strip():
         return False, "Comment cannot be empty."
-
     comment = Comment(
+        uuid=str(uuid.uuid4()),
         rule_id=rule_id,
-        user_id=user.id or current_user.id,
-        user_name=current_user.first_name,
+        user_id=user.id,
+        user_name=user.first_name + " " + (user.last_name or ""),
         content=content.strip(),
         created_at=datetime.datetime.now(tz=datetime.timezone.utc),
-        updated_at=datetime.datetime.now(tz=datetime.timezone.utc)
+        updated_at=datetime.datetime.now(tz=datetime.timezone.utc),
+        parent_comment_id=parent_comment_id,
     )
     db.session.add(comment)
     db.session.commit()
     return True, "Comment posted successfully."
 
-# Read
 
 def get_comment_by_id(comment_id) -> Comment | None:
-    """Get a comment by its ID"""
     return Comment.query.get(comment_id)
 
+
+def get_comments_for_rule(rule_id, page, user_id=None):
+    """Paginated top-level comments (no replies) — mirrors bundle system."""
+    pagination = (Comment.query
+                  .filter_by(rule_id=rule_id, parent_comment_id=None)
+                  .order_by(Comment.created_at.desc())
+                  .paginate(page=page, per_page=10))
+    return pagination, [c.to_json(user_id=user_id) for c in pagination.items]
+
+
 def get_comment_page(page, rule_id) -> object:
-    """Get paginated comments for a rule"""
     return Comment.query.filter_by(rule_id=rule_id).paginate(page=page, per_page=20, max_per_page=20)
 
+
 def get_total_comments_count() -> int:
-    """Get total number of comments"""
     return Comment.query.count()
 
-def get_latest_comment_for_user_and_rule(user_id: int, rule_id: int) -> Comment | None:
-    """Get the most recent comment by a user for a rule"""
-    return Comment.query\
-        .filter_by(user_id=user_id, rule_id=rule_id)\
-        .order_by(Comment.id.desc())\
-        .first()
 
-# Update
+def get_latest_comment_for_user_and_rule(user_id: int, rule_id: int) -> Comment | None:
+    return Comment.query.filter_by(user_id=user_id, rule_id=rule_id).order_by(Comment.id.desc()).first()
+
 
 def update_comment(comment_id, new_content) -> Comment | None:
-    """Update content of a comment"""
     comment = get_comment_by_id(comment_id)
     if comment:
         comment.content = new_content
+        comment.updated_at = datetime.datetime.now(tz=datetime.timezone.utc)
         db.session.commit()
     return comment
 
-# Delete
+
 def delete_comment(comment_id) -> bool:
-    """Delete a comment by its ID"""
     comment = get_comment_by_id(comment_id)
     if comment:
         db.session.delete(comment)
         db.session.commit()
         return True
     return False
+
+
+def add_reaction_to_rule_comment(comment_id, user_id, reaction_type):
+    from app.core.db_class.db import RuleCommentReaction
+    comment = get_comment_by_id(comment_id)
+    if not comment:
+        return False, "Comment not found"
+
+    existing = RuleCommentReaction.query.filter_by(
+        comment_id=comment_id, user_id=user_id, reaction_type=reaction_type).first()
+
+    if existing:
+        # toggle off
+        db.session.delete(existing)
+        if reaction_type == 'like':
+            comment.likes = max(0, (comment.likes or 0) - 1)
+        elif reaction_type == 'dislike':
+            comment.dislikes = max(0, (comment.dislikes or 0) - 1)
+        db.session.commit()
+        return True, f"Removed {reaction_type}"
+
+    # remove opposite vote first
+    if reaction_type in ('like', 'dislike'):
+        opposite = 'dislike' if reaction_type == 'like' else 'like'
+        opp = RuleCommentReaction.query.filter_by(
+            comment_id=comment_id, user_id=user_id, reaction_type=opposite).first()
+        if opp:
+            db.session.delete(opp)
+            if opposite == 'like':
+                comment.likes = max(0, (comment.likes or 0) - 1)
+            else:
+                comment.dislikes = max(0, (comment.dislikes or 0) - 1)
+
+    db.session.add(RuleCommentReaction(
+        uuid=str(uuid.uuid4()),
+        rule_id=comment.rule_id,
+        comment_id=comment_id,
+        user_id=user_id,
+        reaction_type=reaction_type,
+    ))
+    if reaction_type == 'like':
+        comment.likes = (comment.likes or 0) + 1
+    elif reaction_type == 'dislike':
+        comment.dislikes = (comment.dislikes or 0) + 1
+    db.session.commit()
+    return True, f"Added {reaction_type}"
 
 ###################
 #   contributor   #

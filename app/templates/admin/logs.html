@@ -255,7 +255,23 @@ createApp({
       if (log.target_type === 'user' && log.target_id)
         return `/account/detail_user/${log.target_id}`
       if (log.target_type === 'tag') return '/tags/admin/list'
+      if (log.target_type === 'job' && log.target_uuid)
+        return `/jobs/list?job=${log.target_uuid}`
       if (log.target_type === 'job') return '/jobs/list'
+      if (log.target_type === 'comment' && log.target_id) {
+        const ruleUuid = log.extra?.rule_uuid
+        const ruleId   = log.extra?.rule_id
+        const base = ruleUuid ? `/rule/detail_rule/${ruleUuid}`
+                               : ruleId ? `/rule/detail_rule/${ruleId}` : null
+        if (base) return `${base}?comment=${log.target_id}`
+      }
+      if (log.target_type === 'bundle_comment' && log.target_id) {
+        const bundleUuid = log.extra?.bundle_uuid
+        const bundleId   = log.extra?.bundle_id
+        const base = bundleUuid ? `/bundle/detail/${bundleUuid}`
+                                 : bundleId ? `/bundle/detail/${bundleId}` : null
+        if (base) return `${base}?comment=${log.target_id}`
+      }
       return null
     }
 

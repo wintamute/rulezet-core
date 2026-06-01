@@ -1,5 +1,16 @@
 {% extends 'base.html' %}
 
+{% block head %}
+<style>
+@keyframes job-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(13,110,253,.6); outline: 2px solid #0d6efd; }
+  70%  { box-shadow: 0 0 0 10px rgba(13,110,253,0); }
+  100% { box-shadow: 0 0 0 0 rgba(13,110,253,0); outline: 2px solid transparent; }
+}
+.job-highlight { animation: job-pulse 1.4s ease 3; background: rgba(13,110,253,.05) !important; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid mt-3 px-4" id="jobs-app" v-cloak>
 
@@ -119,7 +130,9 @@
 
     <!-- ── Job cards ── -->
     <div v-else class="d-flex flex-column gap-3">
-        <div v-for="job in jobs" :key="job.uuid" class="card border-0 shadow-sm rounded-4">
+        <div v-for="job in jobs" :key="job.uuid"
+             :id="'job-' + job.uuid"
+             :class="['card border-0 shadow-sm rounded-4', highlightUuid === job.uuid ? 'job-highlight' : '']">
             <div class="card-body p-3">
 
                 <!-- Top row -->
@@ -326,6 +339,7 @@
             const killingZombies = ref(false);
 
             // ── Logs state ───────────────────────────────────────────────────
+            const highlightUuid = ref(null);
             const expandedJob = ref(null);
             const jobLogs     = reactive({});
             const logsLoading = reactive({});
@@ -495,11 +509,27 @@
                 if (hasActive && !logPoller) load();
             }
 
-            onMounted(() => {
-                load(1);
+            onMounted(async () => {
+                // Check for ?job=<uuid> from activity logs redirect
+                const targetUuid = new URLSearchParams(window.location.search).get('job');
+                if (targetUuid) highlightUuid.value = targetUuid;
+
+                await load(1);
                 loadZombies();
                 autoTimer = setInterval(maybeAutoRefresh, 3000);
                 setInterval(loadZombies, 15000);
+
+                if (targetUuid) {
+                    await nextTick();
+                    toggleDetail(targetUuid);   // auto-expand the job
+                    setTimeout(() => {
+                        const el = document.getElementById('job-' + targetUuid);
+                        if (el) {
+                            const top = el.getBoundingClientRect().top + window.pageYOffset - 100;
+                            window.scrollTo({ top, behavior: 'smooth' });
+                        }
+                    }, 200);
+                }
             });
             onUnmounted(() => {
                 if (autoTimer) clearInterval(autoTimer);
@@ -510,7 +540,7 @@
                 jobs, loading, filterStatus, search, perPage,
                 currentPage, totalPages, totalJobs,
                 acting, zombies, killingZombies,
-                expandedJob, jobLogs, logsLoading, logRefs,
+                highlightUuid, expandedJob, jobLogs, logsLoading, logRefs,
                 statusColor, statusIcon, logLevelColor, logLevelIcon,
                 shortTime, elapsed, load, doAction, toggleDetail,
                 loadZombies, killZombies,

@@ -756,70 +756,85 @@ def comment_rule() -> jsonify:
         return {"comments_list": comments_list, "total_comments": total_comments}
     return {"message": "No Comments"}, 404
 
+@rule_blueprint.route("/get_comments", methods=["GET"])
+def get_comments():
+    rule_id = request.args.get('rule_id', type=int)
+    page    = request.args.get('page', 1, type=int)
+    if not rule_id:
+        return jsonify({"message": "Missing rule_id"}), 400
+    uid = current_user.id if current_user.is_authenticated else None
+    pagination, comments = RuleModel.get_comments_for_rule(rule_id, page, user_id=uid)
+    return jsonify({
+        "comments":       comments,
+        "total_pages":    pagination.pages,
+        "total_comments": pagination.total,
+    }), 200
+
+
 @rule_blueprint.route("/comment_add", methods=["GET"])
 @login_required
-def add_comment() -> jsonify:
-    """Add a comment"""
-    new_content = request.args.get('new_content', '', type=str)
-    rule_id = request.args.get('rule_id', 1, type=int)
-    success, message = RuleModel.add_comment_core(rule_id, new_content, current_user)
+def add_comment():
+    content           = request.args.get('content', '', type=str) or request.args.get('new_content', '', type=str)
+    rule_id           = request.args.get('rule_id', type=int)
+    parent_comment_id = request.args.get('parent_comment_id', type=int, default=None)
+    if not rule_id or not content.strip():
+        return jsonify({"message": "Missing rule_id or content", "toast_class": "danger-subtle"}), 400
+    success, message = RuleModel.add_comment_core(rule_id, content, current_user, parent_comment_id)
+    if not success:
+        return jsonify({"message": message, "toast_class": "danger-subtle"}), 500
     new_comment = RuleModel.get_latest_comment_for_user_and_rule(current_user.id, rule_id)
-    return {
-        "comment": {
-            "id": new_comment.id,
-            "content": new_comment.content,
-            "user_name": new_comment.user_name,  
-            "user_id": new_comment.user.id,
-            "created_at": new_comment.created_at.strftime("%Y-%m-%d %H:%M")
-        }
-    }
+    rule_obj = RuleModel.get_rule(rule_id)
+    log_activity("comment.add",
+                 f"Added comment on rule '{rule_obj.title if rule_obj else rule_id}'",
+                 target_type="comment", target_id=new_comment.id,
+                 extra={"rule_id": rule_id, "rule_uuid": rule_obj.uuid if rule_obj else None})
+    return jsonify({"message": message, "toast_class": "success-subtle"}), 200
+
 
 @rule_blueprint.route("/edit_comment", methods=["GET"])
 @login_required
-def edit_comment() -> jsonify:
-    """Edit a comment"""
-    comment_id = request.args.get('commentID', 1, type=int)
-    new_content = request.args.get('newContent', '', type=str)
+def edit_comment():
+    comment_id  = request.args.get('comment_id', type=int) or request.args.get('commentID', type=int)
+    new_content = request.args.get('content', '', type=str) or request.args.get('newContent', '', type=str)
+    comment = RuleModel.get_comment_by_id(comment_id)
+    if not comment:
+        return jsonify({"message": "Comment not found", "toast_class": "danger-subtle"}), 404
+    if comment.user_id != current_user.id and not current_user.is_admin():
+        return jsonify({"message": "Not authorized", "toast_class": "danger-subtle"}), 403
+    RuleModel.update_comment(comment_id, new_content)
+    return jsonify({"message": "Comment edited.", "toast_class": "success-subtle"}), 200
 
-    comment = RuleModel.get_comment_by_id(comment_id)
-    if  comment.user_id == current_user.id or current_user.is_admin():
-        update_content = RuleModel.update_comment(comment_id, new_content)
-        if update_content:
-            return jsonify({"updatedComment": update_content.to_json(),
-                            "success": True,
-                            "toast_class": 'success',
-                            "message": "Comment edited with success"}), 200
-        else:
-            return jsonify({ 
-            "success": False,
-            "toast_class": 'false',
-            "message": "failed to edit the comment"
-        }), 500
-    else:
-        return render_template("access_denied.html")
-    
-@rule_blueprint.route("/comment_delete/<int:comment_id>", methods=["GET"])
+
+@rule_blueprint.route("/delete_comment", methods=["GET"])
 @login_required
-def delete_comment_route(comment_id) -> render_template:
-    """Delete a comment"""
+def delete_comment_route():
+    comment_id = request.args.get('comment_id', type=int)
     comment = RuleModel.get_comment_by_id(comment_id)
-    if  comment.user_id == current_user.id or current_user.is_admin():
-        success = RuleModel.delete_comment(comment_id)
-        if success:
-            return jsonify({ 
-                "success": True,
-                "toast_class": 'success',
-                "message": "Comment deleted with success"
-            }), 200
-        else:
-            return jsonify({ 
-            "success": False,
-            "toast_class": 'false',
-            "message": "failed to delete the comment"
-        }), 500
-        #return redirect(url_for("rule.detail_rule", rule_id=rule_id))
-    else:
-        return render_template("access_denied.html")
+    if not comment:
+        return jsonify({"message": "Comment not found", "toast_class": "danger-subtle"}), 404
+    if comment.user_id != current_user.id and not current_user.is_admin():
+        return jsonify({"message": "Not authorized", "toast_class": "danger-subtle"}), 403
+    rule_obj = RuleModel.get_rule(comment.rule_id)
+    success = RuleModel.delete_comment(comment_id)
+    if success:
+        log_activity("comment.delete",
+                     f"Deleted comment id={comment_id} on rule '{rule_obj.title if rule_obj else '?'}'",
+                     target_type="comment", target_id=comment_id,
+                     extra={"rule_id": comment.rule_id, "rule_uuid": rule_obj.uuid if rule_obj else None})
+        return jsonify({"message": "Comment deleted.", "toast_class": "success-subtle"}), 200
+    return jsonify({"message": "Failed to delete", "toast_class": "danger-subtle"}), 500
+
+
+@rule_blueprint.route("/add_reaction", methods=["GET"])
+@login_required
+def add_reaction():
+    comment_id    = request.args.get('comment_id', type=int)
+    reaction_type = request.args.get('reaction_type', type=str)
+    if not comment_id or not reaction_type:
+        return jsonify({"message": "Missing params", "toast_class": "danger-subtle"}), 400
+    success, message = RuleModel.add_reaction_to_rule_comment(comment_id, current_user.id, reaction_type)
+    cls = "success-subtle" if success else "danger-subtle"
+    return jsonify({"message": message, "toast_class": cls}), (200 if success else 500)
 
 #############################
 #   Propose edit for rule   #

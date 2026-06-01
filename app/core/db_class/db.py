@@ -405,33 +405,80 @@ class RuleFavoriteUser(db.Model):
 
 class Comment(db.Model):
     """Model for user comments on rules."""
-    
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    rule_id = db.Column(db.Integer, db.ForeignKey('rule.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    id       = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    uuid     = db.Column(db.String(36), unique=True, nullable=True, index=True)
+    rule_id  = db.Column(db.Integer, db.ForeignKey('rule.id'), nullable=False)
+    user_id  = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user_name = db.Column(db.Text, nullable=False)
-    content = db.Column(db.Text, nullable=False)
+    content  = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, index=True)
     updated_at = db.Column(db.DateTime, index=True)
-    likes = db.Column(db.Integer, default=0)
+    likes    = db.Column(db.Integer, default=0)
     dislikes = db.Column(db.Integer, default=0)
+    parent_comment_id = db.Column(db.Integer, db.ForeignKey('comment.id'), nullable=True)
 
-    # Relations
-    user = db.relationship('User', backref=db.backref('comments_user', lazy='dynamic' , cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('comments_user', lazy='dynamic', cascade='all, delete-orphan'))
     rule = db.relationship('Rule', backref=db.backref('comments_rule', lazy='dynamic', cascade='all, delete-orphan'))
+    parent_comment = db.relationship('Comment', remote_side=[id],
+                                     backref=db.backref('replies', lazy='dynamic', cascade='all, delete-orphan'))
+
+    def _get_reactions(self):
+        from app.core.db_class.db import RuleCommentReaction
+        return RuleCommentReaction.query.filter_by(comment_id=self.id).all()
+
+    def to_json(self, user_id=None, include_replies=True):
+        reactions_raw = self._get_reactions()
+        non_vote = [r.to_json() for r in reactions_raw if r.reaction_type not in ('like', 'dislike')]
+        user_has_liked    = any(r.user_id == user_id and r.reaction_type == 'like'    for r in reactions_raw) if user_id else False
+        user_has_disliked = any(r.user_id == user_id and r.reaction_type == 'dislike' for r in reactions_raw) if user_id else False
+        data = {
+            "id":               self.id,
+            "uuid":             self.uuid,
+            "rule_id":          self.rule_id,
+            "user_id":          self.user_id,
+            "user_name":        self.user_name,
+            "content":          self.content,
+            "created_at":       self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None,
+            "updated_at":       self.updated_at.strftime('%Y-%m-%d %H:%M') if self.updated_at else None,
+            "likes":            self.likes,
+            "dislikes":         self.dislikes,
+            "is_admin":         self.user.is_admin() if self.user else False,
+            "parent_comment_id": self.parent_comment_id,
+            "reactions":        non_vote,
+            "user_has_liked":   user_has_liked,
+            "user_has_disliked": user_has_disliked,
+        }
+        if include_replies:
+            data["replies"] = [r.to_json(user_id=user_id, include_replies=True)
+                               for r in self.replies.order_by('id').all()]
+        return data
+
+
+class RuleCommentReaction(db.Model):
+    """Like / dislike / emoji reaction on a rule comment."""
+    __tablename__ = 'rule_comment_reaction'
+
+    id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    uuid         = db.Column(db.String(36), unique=True, nullable=False, index=True)
+    rule_id      = db.Column(db.Integer, db.ForeignKey('rule.id'), nullable=False)
+    comment_id   = db.Column(db.Integer, db.ForeignKey('comment.id', ondelete='CASCADE'), nullable=False)
+    user_id      = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reaction_type = db.Column(db.String(50), nullable=False)
+    created_at   = db.Column(db.DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+    user    = db.relationship('User',    backref=db.backref('rule_comment_reactions', lazy='dynamic', cascade='all, delete-orphan'))
+    rule    = db.relationship('Rule',    backref=db.backref('comment_reactions',      lazy='dynamic'))
+    comment = db.relationship('Comment', backref=db.backref('rule_reactions',         lazy='dynamic', cascade='all, delete-orphan'))
 
     def to_json(self):
         return {
-            "id": self.id,
-            "rule_id": self.rule_id,
-            "user_id": self.user_id,
-            "content": self.content,
-            "created_at": self.created_at.strftime('%Y-%m-%d %H:%M'),
-            "updated_at": self.updated_at.strftime('%Y-%m-%d %H:%M'),
-            "likes": self.likes,
-            "user_name": self.user_name,
-            "dislikes": self.dislikes,
-            "is_admin": self.user.is_admin()
+            "id":            self.id,
+            "rule_id":       self.rule_id,
+            "comment_id":    self.comment_id,
+            "user_id":       self.user_id,
+            "reaction_type": self.reaction_type,
+            "created_at":    self.created_at.strftime('%Y-%m-%d %H:%M'),
         }
 
 

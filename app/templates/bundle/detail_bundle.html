@@ -1,4 +1,14 @@
 {% extends 'base.html' %}
+{% block head %}
+<style>
+@keyframes comment-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,193,7,.7); outline: 2px solid #ffc107; }
+  70%  { box-shadow: 0 0 0 10px rgba(255,193,7,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,193,7,0); outline: 2px solid transparent; }
+}
+.comment-highlight { animation: comment-pulse 1.4s ease 3; background: rgba(255,193,7,.07) !important; border-radius: .5rem; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="container py-5" id="main-containers">
     <!-- Toasts error if not main-container-->
@@ -534,7 +544,9 @@
 
                     <div class="collapse show mt-4" id="collapseComments">
                         <div v-if="comments_list && comments_list.length > 0">
-                            <div v-for="comment in comments_list" :key="comment.id" class="mb-4">
+                            <div v-for="comment in comments_list" :key="comment.id"
+                                :id="'bcomment-' + comment.id"
+                                :class="['mb-4', highlightBundleCommentId == comment.id ? 'comment-highlight' : '']">
 
                                 <div
                                     class="card border shadow-none comment-card p-3 rounded-3 hover-shadow-light transition-all mb-2">
@@ -1292,6 +1304,7 @@
             // --------------------------------------------
 
             const comments_list = ref([]);
+            const highlightBundleCommentId = ref(null);
             const current_page = ref(1);
             const total_comments = ref(0);
             const total_pages = ref(0);
@@ -1485,6 +1498,24 @@
 
             onMounted(async () => {
                 await init();
+
+                // Scroll + highlight ?comment=<id> from activity logs redirect
+                const targetCommentId = new URLSearchParams(window.location.search).get('comment');
+                if (targetCommentId) {
+                    highlightBundleCommentId.value = parseInt(targetCommentId);
+                    let attempts = 0;
+                    const tryScroll = () => {
+                        const el = document.getElementById('bcomment-' + targetCommentId);
+                        if (el) {
+                            const top = el.getBoundingClientRect().top + window.pageYOffset - 100;
+                            window.scrollTo({ top, behavior: 'smooth' });
+                        } else if (attempts++ < 8) {
+                            setTimeout(tryScroll, 200);
+                        }
+                    };
+                    setTimeout(tryScroll, 400);
+                }
+
                 const el = document.getElementById('bundle-info');
                 if (el) {
                     bundleId.value = el.dataset.bundleId;
@@ -1515,7 +1546,7 @@
 
                 treeData, selectedNode, handleSelect, openNodes, handleToggleFolder, toggleAll, isAllExpanded, isRule, clearDisplay, toggleContent,
 
-                comments_list, fetchComments, current_page, total_comments, total_pages, newCommentContent, submitComment, replyingTo, replyContent, visibleReplies, toggleReplies,
+                comments_list, highlightBundleCommentId, fetchComments, current_page, total_comments, total_pages, newCommentContent, submitComment, replyingTo, replyContent, visibleReplies, toggleReplies,
                 loadMore, showLess, deleteComment, editComment, addReaction, emodji_picker, current_user_is_admin,
 
                 // tags

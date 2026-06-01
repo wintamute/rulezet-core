@@ -779,6 +779,12 @@ def add_comment():
 
     message, success = BundleModel.add_comment_to_bundle(bundle_id, current_user, content, parent_comment_id)
     if success:
+        from app.core.db_class.db import CommentBundle
+        new_c = CommentBundle.query.filter_by(bundle_id=bundle_id, user_id=current_user.id).order_by(CommentBundle.id.desc()).first()
+        if new_c:
+            log_activity("comment.add", f"Added comment on bundle id={bundle_id}",
+                         target_type="bundle_comment", target_id=new_c.id,
+                         extra={"bundle_id": bundle_id, "bundle_uuid": bundle.uuid})
         return {"message": message, "toast_class": "success-subtle"}, 200
     else:
         return {"message": message, "toast_class": "danger-subtle"}, 500
@@ -822,8 +828,14 @@ def delete_comment():
         return {"message": "You don't have the permission to do that !", "toast_class": "danger-subtle"}, 401
 
 
+    bundle_id  = comment.bundle_id
+    bundle_obj = BundleModel.get_bundle_by_id(bundle_id)
     success = BundleModel.delete_comment_bundle(comment_id)
     if success:
+        log_activity("comment.delete", f"Deleted bundle comment id={comment_id}",
+                     target_type="bundle_comment", target_id=comment_id,
+                     extra={"bundle_id": bundle_id,
+                            "bundle_uuid": bundle_obj.uuid if bundle_obj else None})
         return {"message": "Comment deleted.", "toast_class": "success-subtle"}, 200
     else:
         return {"message": "Not authorized or comment not found.", "toast_class": "danger-subtle"}, 403
