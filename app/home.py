@@ -516,21 +516,52 @@ def delete_logs_bulk():
 
 @home_blueprint.route('/activity_feed', methods=['GET'])
 def activity_feed():
-    """Public activity feed — only is_public=True entries."""
-    from app.core.db_class.db import ActivityLog
+    """Public activity feed — only is_public=True entries whose target is still accessible."""
+    from app.core.db_class.db import ActivityLog, Rule, Bundle
     from app import db
 
     page     = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    paginated = (ActivityLog.query
-                 .filter_by(is_public=True)
-                 .order_by(ActivityLog.created_at.desc())
-                 .paginate(page=page, per_page=per_page, error_out=False))
+    per_page = min(request.args.get('per_page', 20, type=int), 50)
+
+    def _is_accessible(log):
+        tt = log.target_type
+        if tt == 'rule':
+            r = (Rule.query.filter_by(uuid=log.target_uuid).first() if log.target_uuid
+                 else Rule.query.get(log.target_id) if log.target_id else None)
+            return r is not None and not r.is_deleted
+        if tt == 'bundle':
+            b = (Bundle.query.filter_by(uuid=log.target_uuid).first() if log.target_uuid
+                 else Bundle.query.get(log.target_id) if log.target_id else None)
+            return b is not None and b.access
+        if tt == 'comment':
+            extra = log.extra or {}
+            r = (Rule.query.filter_by(uuid=extra['rule_uuid']).first() if extra.get('rule_uuid')
+                 else Rule.query.get(extra['rule_id']) if extra.get('rule_id') else None)
+            return r is not None and not r.is_deleted
+        if tt == 'bundle_comment':
+            extra = log.extra or {}
+            b = (Bundle.query.filter_by(uuid=extra['bundle_uuid']).first() if extra.get('bundle_uuid')
+                 else Bundle.query.get(extra['bundle_id']) if extra.get('bundle_id') else None)
+            return b is not None and b.access
+        return True  # user, tag, job, github — always visible
+
+    # Fetch a larger batch to absorb entries whose target became private/deleted
+    batch_size = per_page * 4
+    offset     = (page - 1) * per_page
+    candidates = (ActivityLog.query
+                  .filter_by(is_public=True)
+                  .order_by(ActivityLog.created_at.desc())
+                  .offset(offset)
+                  .limit(batch_size)
+                  .all())
+
+    visible = [l for l in candidates if _is_accessible(l)][:per_page]
+
     return jsonify({
-        "logs":        [l.to_json() for l in paginated.items],
-        "total":       paginated.total,
+        "logs":        [l.to_json() for l in visible],
+        "total":       len(visible),
         "page":        page,
-        "total_pages": paginated.pages,
+        "total_pages": 1,
     }), 200
 
 
