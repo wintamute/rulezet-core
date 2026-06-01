@@ -3028,3 +3028,46 @@ def get_similar_rule(rule_id: int = None, number: int = None):
     
     return query.all()
    
+
+# ── Rule Scope ─────────────────────────────────────────────────────────────────
+
+def get_scopes(rule_id: int, current_user_id: int = None):
+    """Return all scope declarations for a rule plus works/nworks counts and the current user's scope."""
+    scopes = RuleScope.query.filter_by(rule_id=rule_id).order_by(RuleScope.created_at.desc()).all()
+    works_count  = sum(1 for s in scopes if s.works)
+    nworks_count = len(scopes) - works_count
+    my_scope = None
+    if current_user_id:
+        my = RuleScope.query.filter_by(rule_id=rule_id, user_id=current_user_id).first()
+        if my:
+            my_scope = my.to_json()
+    return [s.to_json() for s in scopes], works_count, nworks_count, my_scope
+
+
+def upsert_scope(rule_id: int, user_id: int, works: bool, entries: list, comment: str):
+    """Create or update a user's scope declaration for a rule. Returns (scope_json, is_new)."""
+    existing = RuleScope.query.filter_by(rule_id=rule_id, user_id=user_id).first()
+    is_new = existing is None
+    if is_new:
+        existing = RuleScope(
+            uuid=str(uuid.uuid4()),
+            rule_id=rule_id,
+            user_id=user_id,
+        )
+        db.session.add(existing)
+    existing.works   = works
+    existing.entries = entries
+    existing.comment = comment or None
+    existing.updated_at = datetime.datetime.now(tz=datetime.timezone.utc)
+    db.session.commit()
+    return existing.to_json(), is_new
+
+
+def delete_scope(rule_id: int, user_id: int):
+    """Delete a user's scope declaration. Returns True if found and deleted."""
+    scope = RuleScope.query.filter_by(rule_id=rule_id, user_id=user_id).first()
+    if not scope:
+        return False
+    db.session.delete(scope)
+    db.session.commit()
+    return True

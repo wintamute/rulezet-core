@@ -3368,3 +3368,52 @@ def bulk_tag():
         return render_template('jobs/bulk_tag.html')
     else:
         return render_template('access_denied.html')
+
+
+# ── Rule Scope (environment / "works for me") ─────────────────────────────────
+
+@rule_blueprint.route('/get_scopes/<int:rule_id>', methods=['GET'])
+def get_scope_list(rule_id):
+    current_user_id = current_user.id if current_user.is_authenticated else None
+    scopes, works_count, nworks_count, my_scope = RuleModel.get_scopes(rule_id, current_user_id)
+    return jsonify({
+        'success':      True,
+        'scopes':       scopes,
+        'works_count':  works_count,
+        'nworks_count': nworks_count,
+        'my_scope':     my_scope,
+    }), 200
+
+
+@rule_blueprint.route('/scope/<int:rule_id>', methods=['POST'])
+@login_required
+def scope_upsert(rule_id):
+    rule = RuleModel.get_rule(rule_id)
+    if not rule:
+        return jsonify({'success': False, 'message': 'Rule not found'}), 404
+    data    = request.get_json() or {}
+    works   = bool(data.get('works', True))
+    entries = data.get('entries', [])
+    comment = (data.get('comment') or '').strip()[:500]
+    if not isinstance(entries, list):
+        return jsonify({'success': False, 'message': 'entries must be a list'}), 400
+    scope_json, is_new = RuleModel.upsert_scope(rule_id, current_user.id, works, entries, comment)
+    action = 'rule.scope_add' if is_new else 'rule.scope_update'
+    label  = 'Declared' if is_new else 'Updated'
+    log_activity(action, f"{label} scope for rule '{rule.title}' — works={works}",
+                 target_type='rule', target_id=rule_id, target_uuid=rule.uuid)
+    return jsonify({'success': True, 'scope': scope_json}), 200
+
+
+@rule_blueprint.route('/scope/<int:rule_id>', methods=['DELETE'])
+@login_required
+def scope_delete(rule_id):
+    rule = RuleModel.get_rule(rule_id)
+    if not rule:
+        return jsonify({'success': False, 'message': 'Rule not found'}), 404
+    deleted = RuleModel.delete_scope(rule_id, current_user.id)
+    if not deleted:
+        return jsonify({'success': False, 'message': 'No declaration found'}), 404
+    log_activity('rule.scope_delete', f"Removed scope declaration for rule '{rule.title}'",
+                 target_type='rule', target_id=rule_id, target_uuid=rule.uuid)
+    return jsonify({'success': True}), 200
