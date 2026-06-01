@@ -4,11 +4,21 @@
 <div class="container-fluid mt-3 px-4" id="main-container">
 
     <!-- Page header -->
-     <h2 class="fw-bold mb-1 text-center text-primary">
-        <i class="fas fa-tags me-2 text-primary"></i>Tag Management
-    </h2>
-    <div class="mx-auto mb-4" style="width:60px; height:4px; background-color:#0d6efd; border-radius:2px;"></div>
-    <p class="text-muted mt-2 text-center">Manage tags, taxonomies, and galaxies used across all detection rules.</p>
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-tags banner-watermark"></i>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="banner-icon">
+                <i class="fa-solid fa-tags"></i>
+            </div>
+            <div>
+                <h2 class="fw-bold mb-1">Tag Management</h2>
+                <div class="banner-accent"></div>
+            </div>
+        </div>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Manage tags, taxonomies, and galaxies used across all detection rules.
+        </p>
+    </div>
 
     <div v-if="!ready" class="text-center py-5">
         <div class="spinner-border text-primary mb-3" role="status"></div>

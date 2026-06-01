@@ -4,21 +4,28 @@
 <div class="container-fluid mt-3 px-4" id="main-container" v-cloak>
 
     <!-- Header -->
-    <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
-        <div>
-            <h4 class="fw-bold mb-0" style="color: var(--text-color)">
-                <i class="fas fa-tags me-2 text-primary"></i>Bulk Tag Rules
-            </h4>
-            <small class="text-muted">
-                Filter rules precisely, pick tags, and apply them in the background.
-            </small>
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-tag banner-watermark"></i>
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="banner-icon">
+                    <i class="fa-solid fa-tag"></i>
+                </div>
+                <div>
+                    <h2 class="fw-bold mb-1">Bulk Tag Rules</h2>
+                    <div class="banner-accent"></div>
+                </div>
+            </div>
+            <a href="/jobs/list" class="btn btn-sm btn-outline-secondary position-relative">
+                <i class="fas fa-tasks me-1"></i>My Jobs
+                <span v-if="runningJobCount > 0"
+                      class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary"
+                      style="font-size:0.6rem">[[ runningJobCount ]]</span>
+            </a>
         </div>
-        <a href="/jobs/list" class="btn btn-sm btn-outline-secondary position-relative">
-            <i class="fas fa-tasks me-1"></i>My Jobs
-            <span v-if="runningJobCount > 0"
-                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary"
-                  style="font-size:0.6rem">[[ runningJobCount ]]</span>
-        </a>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Filter rules precisely, pick tags, and apply them in the background.
+        </p>
     </div>
 
     <div class="row g-4">

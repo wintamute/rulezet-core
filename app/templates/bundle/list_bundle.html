@@ -2,14 +2,19 @@
 
 {% block content %}
 <div class="container mt-4" id="main-container" v-cloak>
-    <div class="mb-4 border-bottom pb-3 text-center">
-        <h2 class="fw-bold text-primary">
-            Bundles Explorer
-            <div class="mx-auto" style="width: 60px; height: 4px; background-color: #0d6efd; border-radius: 2px;"></div>
-        </h2>
-        <p class="text-muted mt-2">
-            Browse and manage collections of rules. Bundles help you organize detection strategies and share them
-            effectively.
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-boxes-stacked banner-watermark"></i>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="banner-icon">
+                <i class="fa-solid fa-boxes-stacked"></i>
+            </div>
+            <div>
+                <h2 class="fw-bold mb-1">Bundles Explorer</h2>
+                <div class="banner-accent"></div>
+            </div>
+        </div>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Browse and manage collections of rules. Bundles help you organize detection strategies and share them effectively.
         </p>
     </div>
 

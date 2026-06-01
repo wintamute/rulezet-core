@@ -15,15 +15,19 @@
 {% endblock %}
 {% block content %}
 <div class="container mt-4" id="main-container">
-    <div class="mb-4 border-bottom pb-3">
-        <h2 class="mb-3 text-center text-primary fw-bold">
-            GitHub Rules Management
-            <div class="mx-auto" style="width: 60px; height: 4px; background-color: #0d6efd; border-radius: 2px;"></div>
-        </h2>
-        <p class="text-muted mt-2 text-center">
-            Monitor and manage your imported rule sets from GitHub.
-            Use the tabs below to view all imported repositories and check for available updates.
-            You can also track ongoing imports or updates in real time.
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-bars-progress banner-watermark"></i>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="banner-icon">
+                <i class="fa-solid fa-bars-progress"></i>
+            </div>
+            <div>
+                <h2 class="fw-bold mb-1">GitHub Rules Management</h2>
+                <div class="banner-accent"></div>
+            </div>
+        </div>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Monitor and manage your imported rule sets from GitHub. View all imported repositories, check for available updates and track ongoing imports in real time.
         </p>
     </div>
     <!-- Button trigger modal -->

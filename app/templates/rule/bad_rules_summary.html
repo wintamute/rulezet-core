@@ -6,18 +6,26 @@
 
 {% block content %}
 <div id="main-container" class="container mt-5" v-cloak>
-    <div class="d-flex align-items-center justify-content-between mb-4 pb-3 border-bottom">
-        <div>
-            <h2 class="text-danger fw-bold mb-0">
-                Invalid Rules <span class="badge bg-danger-subtle text-danger ms-2" style="font-size: 1rem;">[[
-                    total_rules ]]</span>
-            </h2>
-            <p class="text-muted small mb-0">Syntax validation failed for the following assets.</p>
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-bug banner-watermark"></i>
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="banner-icon">
+                    <i class="fa-solid fa-bug"></i>
+                </div>
+                <div>
+                    <h2 class="fw-bold mb-1">Invalid Rules <span class="badge bg-danger-subtle text-danger ms-2" style="font-size: 0.8rem; vertical-align: middle;">[[ total_rules ]]</span></h2>
+                    <div class="banner-accent"></div>
+                </div>
+            </div>
+            <button class="btn btn-outline-danger btn-sm rounded-pill px-3" data-bs-toggle="modal"
+                data-bs-target="#confirmDeleteAllModal">
+                <i class="fas fa-trash-alt me-2"></i>Clear All Bads
+            </button>
         </div>
-        <button class="btn btn-outline-danger btn-sm rounded-pill px-3" data-bs-toggle="modal"
-            data-bs-target="#confirmDeleteAllModal">
-            <i class="fas fa-trash-alt me-2"></i>Clear All Bads
-        </button>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Syntax validation failed for the following assets. Fix or remove them to keep your rule base clean.
+        </p>
     </div>
 
     <bad-rule-filter-bar ref="filterBar" api-endpoint="/rule/get_bads_rules_page_filter"

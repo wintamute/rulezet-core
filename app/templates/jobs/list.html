@@ -15,26 +15,35 @@
 <div class="container-fluid mt-3 px-4" id="jobs-app" v-cloak>
 
     <!-- ── Header ── -->
-    <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
-        <div>
-            <h4 class="fw-bold mb-0" style="color: var(--text-color)">
-                <i class="fas fa-tasks me-2 text-primary"></i>Background Jobs
-            </h4>
-            <small class="text-muted">Track and manage all background tasks.</small>
-        </div>
-        <!-- Zombie alert -->
-        <div v-if="zombies.length > 0"
-             class="alert alert-danger border-0 rounded-3 py-2 px-3 mb-0 d-flex align-items-center gap-3">
-            <div>
-                <i class="fas fa-skull-crossbones me-2"></i>
-                <strong>[[ zombies.length ]] zombie job(s)</strong> detected — stuck at "running".
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-tasks banner-watermark"></i>
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="banner-icon">
+                    <i class="fa-solid fa-tasks"></i>
+                </div>
+                <div>
+                    <h2 class="fw-bold mb-1">Background Jobs</h2>
+                    <div class="banner-accent"></div>
+                </div>
             </div>
-            <button class="btn btn-sm btn-danger rounded-pill"
-                    @click="killZombies" :disabled="killingZombies">
-                <span v-if="killingZombies" class="spinner-border spinner-border-sm me-1"></span>
-                <i v-else class="fas fa-skull me-1"></i>Kill all
-            </button>
+            <!-- Zombie alert -->
+            <div v-if="zombies.length > 0"
+                 class="alert alert-danger border-0 rounded-3 py-2 px-3 mb-0 d-flex align-items-center gap-3">
+                <div>
+                    <i class="fas fa-skull-crossbones me-2"></i>
+                    <strong>[[ zombies.length ]] zombie job(s)</strong> detected — stuck at "running".
+                </div>
+                <button class="btn btn-sm btn-danger rounded-pill"
+                        @click="killZombies" :disabled="killingZombies">
+                    <span v-if="killingZombies" class="spinner-border spinner-border-sm me-1"></span>
+                    <i v-else class="fas fa-skull me-1"></i>Kill all
+                </button>
+            </div>
         </div>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Track and manage all background tasks running on the platform.
+        </p>
     </div>
 
     <!-- ── Filters bar ── -->

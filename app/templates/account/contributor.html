@@ -3,13 +3,21 @@
 {% block content %}
 <div id="main-container" class="container mt-4" v-cloak>
 
-    <h2 class="fw-bold mb-1 text-center text-primary">
-        <i class="fas fa-trophy me-2"></i> Contributor Leaderboard
-    </h2>
-    <div class="mx-auto mb-4" style="width: 60px; height: 4px; background-color: #0d6efd; border-radius: 2px;"></div>
-    <p class="lead mt-2 text-center" style="color: var(--subtle-text-color);">
-        Track your progress, earn badges, and climb the ranks by improving the rule base!
-    </p>
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-trophy banner-watermark"></i>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="banner-icon">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <div>
+                <h2 class="fw-bold mb-1">Contributor Leaderboard</h2>
+                <div class="banner-accent"></div>
+            </div>
+        </div>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Track your progress, earn badges, and climb the ranks by improving the rule base.
+        </p>
+    </div>
 
     <div class="card bg-light mb-5 shadow-sm">
         <div class="card-body">

@@ -7,13 +7,19 @@
 <div class="container-fluid my-4" id="main-container" v-cloak>
 
     <!-- Header Section -->
-    <div class="mb-4 header-section text-center">
-        <h2 class="mb-2 text-primary fw-bold">
-            <i class="fas fa-users me-2"></i>User Management
-        </h2>
-        <p class="text-muted mb-0">
-            Manage all registered users in the system. View user details, filter by admin status or connection status,
-            and perform administrative actions.
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-users banner-watermark"></i>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="banner-icon">
+                <i class="fa-solid fa-users"></i>
+            </div>
+            <div>
+                <h2 class="fw-bold mb-1">User Management</h2>
+                <div class="banner-accent"></div>
+            </div>
+        </div>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Manage all registered users in the system. View user details, filter by admin status or connection status, and perform administrative actions.
         </p>
     </div>
 

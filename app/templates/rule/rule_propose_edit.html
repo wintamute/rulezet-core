@@ -6,13 +6,18 @@
 {% block content %}
 <div class="container mt-4" id="main-container" v-cloak>
 
-    <div class="mb-5 text-center">
-        <h2 class="fw-bold text-primary mb-2">
-            <i class="fa-solid fa-code-branch me-2"></i>Rule Change Proposals
-        </h2>
-        <div class="mx-auto mb-3" style="width: 50px; height: 4px; background: var(--bs-primary); border-radius: 10px;">
+    <div class="explorer-banner mb-5">
+        <i class="fa-solid fa-code-branch banner-watermark"></i>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="banner-icon">
+                <i class="fa-solid fa-code-branch"></i>
+            </div>
+            <div>
+                <h2 class="fw-bold mb-1">Rule Change Proposals</h2>
+                <div class="banner-accent"></div>
+            </div>
         </div>
-        <p class="text-muted mx-auto" style="max-width: 600px;">
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
             Manage and review proposed edits to existing rules.
         </p>
     </div>

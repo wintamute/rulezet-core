@@ -4,14 +4,19 @@
 {% if current_user.is_admin() %}
 <div class="container my-4" id="main-container">
 
-    <div class="mb-4 border-bottom pb-3">
-        <h2 class="mb-3 text-center text-primary fw-bold">
-            Manage Rule Format
-            <div class="mx-auto" style="width: 60px; height: 4px; background-color: #0d6efd; border-radius: 2px;"></div>
-        </h2>
-        <p class="text-muted mt-2">
-            Here you can create, modify, and delete rule formats used in the system. Rule formats define how rules are
-            structured and executed. Please proceed with caution when making changes, as they may affect existing rules.
+    <div class="explorer-banner mb-4">
+        <i class="fa-solid fa-file-code banner-watermark"></i>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="banner-icon">
+                <i class="fa-solid fa-file-code"></i>
+            </div>
+            <div>
+                <h2 class="fw-bold mb-1">Manage Rule Formats</h2>
+                <div class="banner-accent"></div>
+            </div>
+        </div>
+        <p class="text-muted mb-0" style="max-width: 600px; font-size: 0.95rem;">
+            Create, modify and delete rule formats used in the system. Proceed with caution — changes may affect existing rules.
         </p>
     </div>
 
