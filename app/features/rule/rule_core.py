@@ -32,6 +32,27 @@ from ..account import account_core as AccountModel
 #   Rule action   #
 ###################
 
+# Default tags automatically attached to every new rule
+_DEFAULT_TAG_NAMES = ['tlp:clear', 'pap:clear']
+
+def _attach_default_tags(rule, user_id):
+    """Silently attach default tags to a newly created rule if they exist in the DB."""
+    existing_ids = {
+        row.tag_id
+        for row in RuleTagAssociation.query.filter_by(rule_id=rule.id).all()
+    }
+    for name in _DEFAULT_TAG_NAMES:
+        tag = Tag.query.filter(Tag.name.ilike(name)).first()
+        if tag and tag.id not in existing_ids:
+            db.session.add(RuleTagAssociation(
+                uuid=str(uuid.uuid4()),
+                rule_id=rule.id,
+                tag_id=tag.id,
+                user_id=user_id,
+                added_at=datetime.datetime.now(tz=datetime.timezone.utc),
+            ))
+            existing_ids.add(tag.id)
+
 # CRUD
 
 # Create
@@ -116,19 +137,18 @@ def add_rule_core(form_dict, user) -> tuple[bool, str] | tuple[Rule, str]:
                 tag_id = tag_data.get('id')
                 if tag_id:
                     assoc = RuleTagAssociation(
-                        uuid=str(uuid.uuid4()),  
+                        uuid=str(uuid.uuid4()),
                         rule_id=new_rule.id,
                         tag_id=int(tag_id),
-                        user_id=user.id if user else None, 
+                        user_id=user.id if user else None,
                         added_at=datetime.datetime.now(tz=datetime.timezone.utc)
                     )
                     db.session.add(assoc)
 
-
-
+        _attach_default_tags(new_rule, user_id)
 
         db.session.commit()
-        return new_rule , "rule created" 
+        return new_rule, "rule created"
 
     except Exception as e:
         return False, e
