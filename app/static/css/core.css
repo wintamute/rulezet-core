@@ -2414,7 +2414,7 @@ body.dark-mode .text-dark {
 }
 
 body.dark-mode .text-muted {
-  color: var(--color-text) !important;
+  color: var(--subtle-text-color) !important;
 }
 
 body.dark-mode .green {
@@ -2680,6 +2680,43 @@ body.dark-mode .d2h-code-side-line del {
 }
 
 
+
+/* ── Dark mode: table fixes ───────────────────────────────────── */
+
+body.dark-mode .table-light th,
+body.dark-mode .table-light td,
+body.dark-mode thead.table-light tr {
+  background-color: var(--light-bg-color) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+body.dark-mode .table {
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+body.dark-mode .table-hover > tbody > tr:hover > * {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  color: var(--text-color) !important;
+}
+
+body.dark-mode .table > :not(caption) > * > * {
+  background-color: transparent;
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+/* bg-*-subtle overrides for dark mode */
+body.dark-mode .bg-success-subtle { background-color: rgba(25, 135, 84, 0.2) !important; }
+body.dark-mode .bg-secondary-subtle { background-color: rgba(255, 255, 255, 0.08) !important; }
+body.dark-mode .bg-danger-subtle { background-color: rgba(220, 53, 69, 0.2) !important; }
+body.dark-mode .bg-warning-subtle { background-color: rgba(255, 193, 7, 0.15) !important; }
+body.dark-mode .bg-primary-subtle { background-color: rgba(13, 110, 253, 0.15) !important; }
+body.dark-mode .text-secondary { color: var(--subtle-text-color) !important; }
+
+/* opacity-50 on small elements is unreadable in dark mode */
+body.dark-mode .table .opacity-50 { opacity: 0.75 !important; }
 
 /* ── Theme toggle pill ───────────────────────────────────────── */
 .theme-toggle {
