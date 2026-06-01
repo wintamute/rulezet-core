@@ -608,6 +608,15 @@
     <a href="#github"><i class="fab fa-github"></i> GitHub Import</a>
     <a href="#jobs"><i class="fas fa-layer-group"></i> Background Jobs</a>
     <a href="#tags-bundles"><i class="fas fa-tags"></i> Tags &amp; Bundles</a>
+    <a href="#default-tags"><i class="fas fa-tag"></i> Default Tags</a>
+    <a href="#activity-logs"><i class="fas fa-scroll"></i> Activity Logs</a>
+  </div>
+
+  <div class="sidebar-section-title">UI System</div>
+  <div class="sidebar-nav">
+    <a href="#ui-banner"><i class="fas fa-rectangle-list"></i> Page Banner</a>
+    <a href="#ui-dark-mode"><i class="fas fa-moon"></i> Dark Mode</a>
+    <a href="#ui-tooltips"><i class="fas fa-tags"></i> Tag Tooltips</a>
   </div>
 
   <div class="sidebar-section-title">API Reference</div>
@@ -1160,6 +1169,16 @@ flask db upgrade          # Apply pending migrations</code></pre>
         def <span class="fn-name">process_and_import_fixed_rule</span>(<span class="fn-param">bad_rule_obj</span>, <span class="fn-param">raw_content: str</span>) → <span class="fn-ret">tuple[bool, str, Rule]</span><br>
         <span class="fn-comment">  # Re-validates a previously invalid rule and imports it on success</span>
       </div>
+
+      <h3 class="subsection">Default Tag Auto-attachment</h3>
+      <div class="func-signature">
+        <span class="fn-comment"># rule_core.py — called inside add_rule_core() before db.session.commit()</span><br>
+        _DEFAULT_TAG_NAMES = <span class="fn-param">['tlp:clear', 'pap:clear']</span><br><br>
+        def <span class="fn-name">_attach_default_tags</span>(<span class="fn-param">rule: Rule</span>, <span class="fn-param">user_id: int</span>) → <span class="fn-ret">None</span>:<br>
+        &nbsp;&nbsp;<span class="fn-comment"># Looks up each tag by name (ilike). Skips silently if tag not in DB.</span><br>
+        &nbsp;&nbsp;<span class="fn-comment"># Idempotent — checks existing associations before inserting.</span>
+      </div>
+      <div class="callout callout-info"><i class="fas fa-circle-info"></i> Tags <code>tlp:clear</code> and <code>pap:clear</code> must be created via the Tags admin UI first. The function covers all creation paths: manual form, parse tab, GitHub import, ZIP import, bad-rule re-import, and the private API.</div>
     </section>
 
     <!-- ════════════════════════ SIMILARITY ENGINE ════════════════════════ -->
@@ -1223,6 +1242,17 @@ flask db upgrade          # Apply pending migrations</code></pre>
       </table>
 
       <div class="callout callout-info"><i class="fas fa-circle-info"></i> The <code>info</code> dict is enriched per-file: <code>enriched_info = {**self.info, "github_path": filepath}</code> before calling <code>parse_metadata</code>.</div>
+
+      <h3 class="subsection">URL normalisation — .git suffix</h3>
+      <p>GitHub clone URLs often end with <code>.git</code> (e.g. from activity logs), but the <code>source</code> column in the DB stores the <code>html_url</code> from the GitHub API which does <em>not</em> include <code>.git</code>. To avoid empty search results, all three code paths strip the suffix before querying:</p>
+      <table class="custom-table">
+        <thead><tr><th>Location</th><th>Applied in</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /rule/github_detail</code> route</td><td><code>rule.py</code> — strips before passing <code>url</code> to template</td></tr>
+          <tr><td><code>get_rules_page_filter()</code> → <code>sourceFilter</code></td><td><code>rule_core.py</code> — strips then applies <code>OR (ilike %url%) OR (ilike %url.git%)</code></td></tr>
+          <tr><td><code>get_all_rule_by_url_github_page()</code></td><td><code>rule_core.py</code> — same normalise + OR pattern</td></tr>
+        </tbody>
+      </table>
 
       <h3 class="subsection">Update Pipeline — Update_class</h3>
       <p>Defined in <code>app/features/rule/rule_from_github/update_rule/update_class.py</code>.</p>
@@ -1301,6 +1331,7 @@ flask db upgrade          # Apply pending migrations</code></pre>
           <tr><td><code>bulk_add_tag_to_rules</code></td><td><code>handle_bulk_add_tag_to_rules</code></td><td>Adds a tag to all rules matching a filter set</td></tr>
           <tr><td><code>bulk_remove_tag_from_rules</code></td><td><code>handle_bulk_remove_tag_from_rules</code></td><td>Removes a tag from filtered rules</td></tr>
           <tr><td><code>delete_github_rules</code></td><td><code>handle_delete_github_rules</code></td><td>Deletes all rules originating from a given GitHub source</td></tr>
+          <tr><td><code>delete_activity_logs</code></td><td><code>handle_delete_activity_logs</code></td><td>Bulk-deletes <code>ActivityLog</code> entries by ID list or full wipe with optional action filter</td></tr>
         </tbody>
       </table>
       <div class="callout callout-info"><i class="fas fa-circle-info"></i> <strong>BATCH_SIZE = 2000</strong>, <strong>LOG_EVERY = 10</strong>. The helper <code>_build_rule_query(payload)</code> mirrors the exact filter params from the UI search.</div>
@@ -1315,6 +1346,7 @@ flask db upgrade          # Apply pending migrations</code></pre>
 
       <h3 class="subsection">Tags</h3>
       <p>Tags are coloured labels attached to rules via <code>RuleTagAssociation</code>. Bulk tag operations run as background jobs (<code>bulk_add_tag_to_rules</code> / <code>bulk_remove_tag_from_rules</code>) to handle large rule sets without blocking the request.</p>
+      <div class="callout callout-tip"><i class="fas fa-tag"></i> <strong>Default tags:</strong> Every new rule automatically receives <code>tlp:clear</code> and <code>pap:clear</code> tags at creation via <code>_attach_default_tags()</code>. See the <a href="#default-tags">Default Tags</a> section for details.</div>
 
       <h3 class="subsection">Bundles</h3>
       <p>Bundles are named, ordered, optionally-public collections of rules. Users can vote on bundles, comment on them, and attach tags. The <code>BundleNode</code> table preserves rule ordering within a bundle.</p>
@@ -1327,6 +1359,225 @@ flask db upgrade          # Apply pending migrations</code></pre>
           <tr><td>Vote on bundle</td><td><code>BundleVote</code> upsert, updates <code>Bundle.score</code></td></tr>
           <tr><td>Comment on bundle</td><td><code>CommentBundle</code> insert</td></tr>
           <tr><td>React to comment</td><td><code>BundleReactionComment</code> upsert</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ════════════════════════ DEFAULT TAGS ════════════════════════ -->
+    <section id="default-tags" class="doc-section anchor-offset">
+      <div class="section-header">
+        <div class="section-icon icon-teal"><i class="fas fa-tag"></i></div>
+        <h2 class="section-title">Default Tags</h2>
+      </div>
+      <p>Every new rule is automatically tagged with <code>tlp:clear</code> and <code>pap:clear</code> at creation time, regardless of how the rule was created.</p>
+
+      <h3 class="subsection">How it works</h3>
+      <p><code>_attach_default_tags(rule, user_id)</code> is called inside <code>add_rule_core()</code> after the rule row is flushed to the DB but before <code>db.session.commit()</code>. It queries <code>Tag.query.filter(Tag.name.ilike(name))</code> for each default tag name. If the tag exists and is not already attached, a new <code>RuleTagAssociation</code> is created.</p>
+
+      <table class="custom-table">
+        <thead><tr><th>Property</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Tag names</td><td><code>tlp:clear</code>, <code>pap:clear</code></td></tr>
+          <tr><td>Lookup</td><td>Case-insensitive (<code>ilike</code>)</td></tr>
+          <tr><td>Missing tag</td><td>Silently skipped — no error raised</td></tr>
+          <tr><td>Duplicate prevention</td><td>Existing associations checked before insert</td></tr>
+          <tr><td>Covered flows</td><td>Manual UI, parse tab, GitHub import, ZIP import, bad-rule fix, private API</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-warn"><i class="fas fa-triangle-exclamation"></i> <strong>Prerequisite:</strong> The tags <code>tlp:clear</code> and <code>pap:clear</code> must exist in the database (create them via <strong>Admin → Tags</strong>) before they can be auto-attached. If they are absent, rules are still created normally without the tags.</div>
+    </section>
+
+    <!-- ════════════════════════ ACTIVITY LOGS ════════════════════════ -->
+    <section id="activity-logs" class="doc-section anchor-offset">
+      <div class="section-header">
+        <div class="section-icon icon-blue"><i class="fas fa-scroll"></i></div>
+        <h2 class="section-title">Activity Logs</h2>
+      </div>
+      <p>Every significant user action is recorded in the <code>ActivityLog</code> table. The system is designed to never raise — all failures are silently swallowed.</p>
+
+      <h3 class="subsection">Logging a new entry</h3>
+      <pre><code>from app.core.utils.activity_log import log_activity
+
+log_activity(
+    "rule.create",
+    f"Created rule '{rule.title}'",
+    target_type="rule",
+    target_id=rule.id,
+    target_uuid=rule.uuid,
+    is_public=True,           # visible in the public feed
+    extra={"source": "github"}  # any JSON-serialisable dict
+)</code></pre>
+
+      <h3 class="subsection">ActivityLog model fields</h3>
+      <div class="doc-card">
+        <ul class="field-list">
+          <li><span class="field-name">action</span><span class="field-type">String</span><span class="field-desc">Dot-namespaced key — e.g. <code>rule.create</code>, <code>user.login</code>, <code>admin.delete_user</code></span></li>
+          <li><span class="field-name">description</span><span class="field-type">Text</span><span class="field-desc">Human-readable summary displayed in the UI</span></li>
+          <li><span class="field-name">user_id</span><span class="field-type">FK → User</span><span class="field-desc">Author of the action (nullable for system actions)</span></li>
+          <li><span class="field-name">target_type</span><span class="field-type">String(32)</span><span class="field-desc"><code>rule</code> · <code>bundle</code> · <code>user</code> · <code>tag</code> · <code>job</code> · <code>comment</code> · <code>bundle_comment</code> · <code>github_import</code> · <code>github_update</code></span></li>
+          <li><span class="field-name">target_id</span><span class="field-type">Integer</span><span class="field-desc">DB primary key of the target object</span></li>
+          <li><span class="field-name">target_uuid</span><span class="field-type">String</span><span class="field-desc">Stable UUID for redirect links</span></li>
+          <li><span class="field-name">is_public</span><span class="field-type">Boolean</span><span class="field-desc">Whether the entry appears in the public activity feed</span></li>
+          <li><span class="field-name">icon</span><span class="field-type">String</span><span class="field-desc">FontAwesome class auto-derived from action (overridable)</span></li>
+          <li><span class="field-name">ip_address</span><span class="field-type">String</span><span class="field-desc">Requester IP (blurred in UI until revealed)</span></li>
+          <li><span class="field-name">extra</span><span class="field-type">JSON</span><span class="field-desc">Arbitrary context dict</span></li>
+          <li><span class="field-name">created_at</span><span class="field-type">DateTime</span></li>
+        </ul>
+      </div>
+
+      <h3 class="subsection">Admin UI — /admin/logs</h3>
+      <table class="custom-table">
+        <thead><tr><th>Feature</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Visibility badge</td><td>Clickable <code>Public</code> / <code>Private</code> pill in the table — single click toggles <code>is_public</code> via <code>POST /admin/logs/edit/:id</code></td></tr>
+          <tr><td>Bulk visibility</td><td>Select rows → selection bar → <strong>Public</strong> or <strong>Private</strong> button → <code>POST /admin/logs/set_visibility</code></td></tr>
+          <tr><td>Bulk delete</td><td>Select rows → <strong>Delete</strong> → creates a <code>delete_activity_logs</code> background job</td></tr>
+          <tr><td>Delete ALL</td><td>Wipes all logs (with optional action filter) via background job</td></tr>
+          <tr><td>Click row</td><td>Opens target resource in a new tab (rule detail, user profile, bundle, job…)</td></tr>
+          <tr><td>Sensitive data</td><td>Username and IP are blurred; revealed by clicking the eye toggle</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="subsection">Admin endpoints</h3>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/admin/logs/edit/&lt;log_id&gt;</div>
+          <div class="endpoint-desc">Edit a single log entry. Body: <code>{ description, icon, is_public }</code> (all optional).</div>
+        </div>
+      </div>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/admin/logs/set_visibility</div>
+          <div class="endpoint-desc">Bulk-set visibility. Body: <code>{ "ids": [1,2,3], "is_public": true }</code>. Returns <code>{ "success": true, "updated": N }</code>.</div>
+        </div>
+      </div>
+      <div class="endpoint-row">
+        <span class="badge-method badge-post">POST</span>
+        <div>
+          <div class="endpoint-path">/admin/logs/delete_bulk</div>
+          <div class="endpoint-desc">Body: <code>{ "ids": [...] }</code> or <code>{ "delete_all": true, "action_filter": "rule.create" }</code>. Creates a background job.</div>
+        </div>
+      </div>
+      <div class="endpoint-row">
+        <span class="badge-method badge-get">GET</span>
+        <div>
+          <div class="endpoint-path">/admin/get_logs_page</div>
+          <div class="endpoint-desc">Params: <code>page</code>, <code>per_page</code>, <code>search</code>, <code>action</code>. Returns paginated log list.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════ UI SYSTEM ════════════════════════ -->
+    <section id="ui-banner" class="doc-section anchor-offset">
+      <div class="section-header">
+        <div class="section-icon icon-indigo"><i class="fas fa-rectangle-list"></i></div>
+        <h2 class="section-title">UI — Page Header Banner</h2>
+      </div>
+      <p>All pages accessible from the navigation use a shared <code>.explorer-banner</code> component defined in <code>app/static/css/core.css</code> (section 18). It provides a consistent page header with icon, title, accent bar, description, and an optional watermark.</p>
+
+      <h3 class="subsection">HTML structure</h3>
+      <pre><code>&lt;div class="explorer-banner mb-4"&gt;
+    &lt;!-- decorative watermark icon --&gt;
+    &lt;i class="fa-solid fa-[icon] banner-watermark"&gt;&lt;/i&gt;
+
+    &lt;div class="d-flex align-items-center gap-3 mb-3"&gt;
+        &lt;div class="banner-icon"&gt;&lt;i class="fa-solid fa-[icon]"&gt;&lt;/i&gt;&lt;/div&gt;
+        &lt;div&gt;
+            &lt;h2 class="fw-bold mb-1"&gt;Page Title&lt;/h2&gt;
+            &lt;div class="banner-accent"&gt;&lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;p class="text-muted mb-0" style="max-width:600px;font-size:.95rem;"&gt;
+        Description text.
+    &lt;/p&gt;
+&lt;/div&gt;</code></pre>
+
+      <table class="custom-table">
+        <thead><tr><th>Class</th><th>Role</th><th>Dimensions</th></tr></thead>
+        <tbody>
+          <tr><td><code>.explorer-banner</code></td><td>Card wrapper with blue top accent gradient</td><td>padding 1.75rem 2rem, border-radius 16px</td></tr>
+          <tr><td><code>.banner-icon</code></td><td>Icon box</td><td>52×52px, border-radius 14px, blue-tinted bg</td></tr>
+          <tr><td><code>.banner-accent</code></td><td>Title underline bar</td><td>36×3px gradient <code>#0d6efd → #0a58ca</code></td></tr>
+          <tr><td><code>.banner-watermark</code></td><td>Decorative background icon</td><td>8rem, opacity 0.04, positioned absolute right</td></tr>
+          <tr><td><code>.banner-formats</code></td><td>Static format pill (Rules Explorer only)</td><td>Rounded pill, 0.72rem monospace font</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-info"><i class="fas fa-palette"></i> The top gradient uses only blue tones — <code>transparent → #0d6efd 35% → #0a58ca 65% → transparent</code>. No violet/indigo in the gradient.</div>
+    </section>
+
+    <section id="ui-dark-mode" class="doc-section anchor-offset">
+      <div class="section-header">
+        <div class="section-icon icon-gray"><i class="fas fa-moon"></i></div>
+        <h2 class="section-title">UI — Dark Mode System</h2>
+      </div>
+      <p>Dark mode is toggled by adding the <code>dark-mode</code> class to <code>&lt;body&gt;</code>. All colours reference CSS custom properties. The active set is defined in <code>:root</code> (light) and <code>body.dark-mode</code> (dark) blocks in <code>app/static/css/core.css</code>.</p>
+
+      <h3 class="subsection">Key CSS variables</h3>
+      <table class="custom-table">
+        <thead><tr><th>Variable</th><th>Light</th><th>Dark</th><th>Use</th></tr></thead>
+        <tbody>
+          <tr><td><code>--text-color</code></td><td><code>#1e1e1e</code></td><td><code>#e2e8f0</code></td><td>Primary text, headings</td></tr>
+          <tr><td><code>--subtle-text-color</code></td><td><code>#6c757d</code></td><td><code>#94a3b8</code></td><td>Muted / secondary text</td></tr>
+          <tr><td><code>--card-bg-color</code></td><td><code>#f9f9f9</code></td><td><code>#2d3f55</code></td><td>Card backgrounds</td></tr>
+          <tr><td><code>--border-color</code></td><td><code>#dee2e6</code></td><td><code>#3d5068</code></td><td>Borders, dividers</td></tr>
+          <tr><td><code>--light-bg-color</code></td><td><code>#f1f1f1</code></td><td><code>#3d5068</code></td><td>Table headers, subtle bg</td></tr>
+          <tr><td><code>--bg-color</code></td><td><code>#f7f7f7</code></td><td><code>#1e293b</code></td><td>Page background</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-danger"><i class="fas fa-triangle-exclamation"></i> <strong>Do not use <code>var(--color-text)</code></strong> — this variable does not exist and will silently inherit instead of applying the intended colour. Always use <code>var(--text-color)</code> (primary) or <code>var(--subtle-text-color)</code> (muted).</div>
+
+      <h3 class="subsection">Dark mode overrides (core.css sections 17–18)</h3>
+      <table class="custom-table">
+        <thead><tr><th>Selector</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td><code>body.dark-mode .text-muted</code></td><td>Uses <code>var(--subtle-text-color)</code> = <code>#94a3b8</code> — not the undefined <code>--color-text</code></td></tr>
+          <tr><td><code>body.dark-mode .table-light th/td</code></td><td>Uses <code>var(--light-bg-color)</code> — prevents white thead on dark background</td></tr>
+          <tr><td><code>body.dark-mode .bg-*-subtle</code></td><td>Semi-transparent overrides for Bootstrap subtle colours (success, secondary, danger, warning, primary)</td></tr>
+          <tr><td><code>body.dark-mode .table .opacity-50</code></td><td>Raised to <code>0.75</code> — 50% opacity on dark text is unreadable</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="ui-tooltips" class="doc-section anchor-offset">
+      <div class="section-header">
+        <div class="section-icon icon-teal"><i class="fas fa-tags"></i></div>
+        <h2 class="section-title">UI — Tag Tooltips</h2>
+      </div>
+      <p>Tag tooltips are rendered by <code>SingleTagDisplay</code> in <code>app/static/js/tags/singleTagDisplay.js</code>. They use Vue 3 <code>&lt;teleport to="body"&gt;</code> with <code>position: fixed</code> computed at <code>mouseenter</code> time.</p>
+
+      <h3 class="subsection">Why teleport?</h3>
+      <p>The rules carousel's outer wrapper has <code>overflow: hidden</code> (required to clip the sliding track). A standard <code>position: absolute</code> tooltip inside that container is clipped by the overflow boundary regardless of <code>z-index</code>. Teleporting to <code>&lt;body&gt;</code> and using <code>position: fixed</code> bypasses the clipping context entirely.</p>
+
+      <h3 class="subsection">Positioning logic</h3>
+      <pre><code>function onEnter() {
+    const rect = wrapperEl.value.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - TIP_WIDTH / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - TIP_WIDTH - 8));
+    tooltipStyle.value = {
+        position: 'fixed',
+        top: (rect.top - TIP_GAP) + 'px',  // above the tag
+        left: left + 'px',
+        transform: 'translateY(-100%)',      // shift up by own height
+        zIndex: '9999',
+        opacity: '0',                        // start invisible
+    };
+    showTooltip.value = true;
+    Vue.nextTick(() =&gt; {
+        tooltipStyle.value = { ...tooltipStyle.value, opacity: '1' };  // fade in
+    });
+}</code></pre>
+
+      <table class="custom-table">
+        <thead><tr><th>Behaviour</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Fade-in</td><td><code>opacity: 0 → 1</code> via <code>nextTick</code> + <code>transition: opacity 0.2s ease</code></td></tr>
+          <tr><td>Mouse bridge</td><td>120ms <code>setTimeout</code> on <code>mouseleave</code> — cancelled when mouse enters the tooltip</td></tr>
+          <tr><td>Viewport clamping</td><td>Left edge clamped to <code>[8, window.innerWidth - TIP_WIDTH - 8]</code></td></tr>
+          <tr><td>Scroll detection</td><td>Description area uses <code>overflow-y: auto; max-height: 100px</code> — no "scroll for more" label</td></tr>
         </tbody>
       </table>
     </section>
@@ -2265,7 +2516,7 @@ FLASKENV=testing pytest tests/ --cov=app --cov-report=html</code></pre>
     <hr class="section-divider">
     <div style="text-align:center;color:var(--muted-color);font-size:.8rem;padding-bottom:1rem;">
       <span style="font-family:'Space Mono',monospace;">Rulezet v1.5.0</span> &mdash; Developer Documentation &mdash;
-      Generated 2026-05-12
+      Updated 2026-06-01
     </div>
 
   </div><!-- /#content -->
