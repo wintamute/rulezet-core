@@ -47,7 +47,12 @@ def why():
 def home() -> render_template:
     """Go to home page"""
     get_flashed_messages()
-    return render_template("home.html")
+    show_import_hint = (
+        current_user.is_authenticated
+        and current_user.is_admin()
+        and RuleModel.get_total_rules_count() == 0
+    )
+    return render_template("home.html", show_import_hint=show_import_hint)
 
 @home_blueprint.route("/get_last_rules", methods=['GET'])
 def get_last_rules() -> dict:

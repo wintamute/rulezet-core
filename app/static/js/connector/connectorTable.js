@@ -96,8 +96,17 @@ function _computeStats(items) {
 
 // ─── ConnectorRow (table expanded detail) ─────────────────────────────────────
 
+const _dropdownFixed = {
+    mounted(el) {
+        if (window.bootstrap?.Dropdown) {
+            new window.bootstrap.Dropdown(el, { popperConfig: { strategy: 'fixed' } })
+        }
+    }
+}
+
 const ConnectorRow = {
     delimiters: ['[[', ']]'],
+    directives: { dropdownFixed: _dropdownFixed },
     props: {
         c:         { type: Object,  required: true },
         isAdmin:   { type: Boolean, default: false },
@@ -247,7 +256,7 @@ const ConnectorRow = {
           </div>
           <div v-else class="dropdown">
             <button class="cnt-btn cnt-btn--success" :disabled="actionBusy==='pull'"
-                    data-bs-toggle="dropdown" aria-expanded="false">
+                    v-dropdown-fixed data-bs-toggle="dropdown" aria-expanded="false">
               <span v-if="actionBusy==='pull'" class="spinner-border spinner-border-sm"></span>
               <i v-else class="fa-solid fa-cloud-arrow-down"></i>
             </button>
@@ -396,6 +405,7 @@ const ConnectorRow = {
 
 const ConnectorCard = {
     delimiters: ['[[', ']]'],
+    directives: { dropdownFixed: _dropdownFixed },
     props: {
         c:         { type: Object,  required: true },
         isAdmin:   { type: Boolean, default: false },
@@ -561,7 +571,7 @@ const ConnectorCard = {
       <div v-else class="dropdown">
         <button class="btn btn-sm btn-outline-success rounded-pill"
                 :disabled="actionBusy==='pull'"
-                data-bs-toggle="dropdown" aria-expanded="false">
+                v-dropdown-fixed data-bs-toggle="dropdown" aria-expanded="false">
           <span v-if="actionBusy==='pull'" class="spinner-border spinner-border-sm me-1"></span>
           <i v-else class="fa-solid fa-cloud-arrow-down me-1"></i>Pull
         </button>
@@ -693,6 +703,7 @@ const ConnectorCard = {
 export default {
     name: 'ConnectorTable',
     delimiters: ['[[', ']]'],
+    directives: { dropdownFixed: _dropdownFixed },
     components: {
         ConnectorRow,
         ConnectorCard,
@@ -987,7 +998,7 @@ export default {
             <i class="fa-solid fa-cloud-arrow-down me-1"></i>Pull all
           </button>
           <button class="cnt-bulk-btn cnt-bulk-btn--success" style="padding:0 6px;border-left:1px solid rgba(255,255,255,.25);"
-                  :disabled="bulkBusy" data-bs-toggle="dropdown" aria-expanded="false">
+                  :disabled="bulkBusy" v-dropdown-fixed data-bs-toggle="dropdown" aria-expanded="false">
             <i class="fa-solid fa-chevron-down" style="font-size:.6rem;"></i>
           </button>
           <ul class="dropdown-menu dropdown-menu-end" style="min-width:180px;font-size:.82rem;">
