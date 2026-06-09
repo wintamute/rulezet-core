@@ -2008,7 +2008,7 @@ def get_last_cve_rules(limit: int = 12) -> list:
         return max((int(y) for y in years), default=0)
 
     rules = (
-        Rule.query
+        _active()
         .filter(
             Rule.cve_id.isnot(None),
             ~Rule.cve_id.in_(['', '[]', 'null', '[""]'])
