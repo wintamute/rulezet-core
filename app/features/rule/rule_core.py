@@ -15,7 +15,7 @@ import requests
 from sqlalchemy.exc import SQLAlchemyError
 from flask import current_app, jsonify, send_file
 from flask_login import current_user
-from sqlalchemy import and_, case, delete as sa_delete, or_, text, update as sa_update
+from sqlalchemy import and_, case, or_, text
 from sqlalchemy.orm import joinedload
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -191,58 +191,63 @@ def get_deleted_batches():
 def _wipe_rule_children(rule_ids: list) -> None:
     """Delete all FK-dependent rows for the given rule IDs before removing the rules.
 
-    Must be called within an active app/request context with a live DB session.
-    No commit is issued here — caller commits after deleting the rules.
+    Uses the ORM query.delete(synchronize_session=False) pattern throughout so
+    that SQLAlchemy correctly serializes the deletes within the open transaction
+    without identity-map conflicts.
+
+    No commit is issued here — the caller commits after deleting the rules.
     """
     if not rule_ids:
         return
     ids = list(rule_ids)
 
-    # 1. Comment reactions (reference rule.id and comment.id)
-    db.session.execute(sa_delete(RuleCommentReaction).where(RuleCommentReaction.rule_id.in_(ids)))
+    # 1. Comment reactions reference both rule.id and comment.id — delete first
+    RuleCommentReaction.query.filter(RuleCommentReaction.rule_id.in_(ids)).delete(synchronize_session=False)
 
-    # 2. Null-out self-referencing parent_comment_id to avoid FK cycle, then bulk delete
-    db.session.execute(sa_update(Comment).where(Comment.rule_id.in_(ids)).values(parent_comment_id=None))
-    db.session.execute(sa_delete(Comment).where(Comment.rule_id.in_(ids)))
+    # 2. Comments have a self-referencing parent_comment_id FK.
+    #    Null it out for the affected rows first to avoid FK cycles, then delete.
+    Comment.query.filter(Comment.rule_id.in_(ids)).update({'parent_comment_id': None}, synchronize_session=False)
+    Comment.query.filter(Comment.rule_id.in_(ids)).delete(synchronize_session=False)
 
-    # 3. Tag associations
-    db.session.execute(sa_delete(RuleTagAssociation).where(RuleTagAssociation.rule_id.in_(ids)))
+    # 3. Tag associations — the table causing the FK violation
+    RuleTagAssociation.query.filter(RuleTagAssociation.rule_id.in_(ids)).delete(synchronize_session=False)
 
-    # 4. Favorites
-    db.session.execute(sa_delete(RuleFavoriteUser).where(RuleFavoriteUser.rule_id.in_(ids)))
+    # 4. Bundle ↔ rule associations (no ondelete=CASCADE on this FK)
+    BundleRuleAssociation.query.filter(BundleRuleAssociation.rule_id.in_(ids)).delete(synchronize_session=False)
 
-    # 5. Votes
-    db.session.execute(sa_delete(RuleVote).where(RuleVote.rule_id.in_(ids)))
+    # 5. Favorites
+    RuleFavoriteUser.query.filter(RuleFavoriteUser.rule_id.in_(ids)).delete(synchronize_session=False)
 
-    # 6. Scope declarations
-    db.session.execute(sa_delete(RuleScope).where(RuleScope.rule_id.in_(ids)))
+    # 6. Votes
+    RuleVote.query.filter(RuleVote.rule_id.in_(ids)).delete(synchronize_session=False)
 
-    # 7. Edit contributions (reference rule.id and proposal.id — delete before proposals)
-    db.session.execute(sa_delete(RuleEditContribution).where(RuleEditContribution.rule_id.in_(ids)))
+    # 7. Edit contributions reference both rule.id and proposal.id — delete before proposals
+    RuleEditContribution.query.filter(RuleEditContribution.rule_id.in_(ids)).delete(synchronize_session=False)
 
-    # 8. Edit comments (only reference proposal.id — delete before proposals)
-    proposal_ids = db.session.scalars(
-        db.select(RuleEditProposal.id).where(RuleEditProposal.rule_id.in_(ids))
-    ).all()
+    # 8. Edit comments only reference proposal.id — delete before proposals
+    proposal_ids = [r for (r,) in
+                    db.session.query(RuleEditProposal.id).filter(RuleEditProposal.rule_id.in_(ids)).all()]
     if proposal_ids:
-        db.session.execute(sa_delete(RuleEditComment).where(RuleEditComment.proposal_id.in_(proposal_ids)))
+        RuleEditComment.query.filter(RuleEditComment.proposal_id.in_(proposal_ids)).delete(synchronize_session=False)
 
     # 9. Edit proposals
-    db.session.execute(sa_delete(RuleEditProposal).where(RuleEditProposal.rule_id.in_(ids)))
+    RuleEditProposal.query.filter(RuleEditProposal.rule_id.in_(ids)).delete(synchronize_session=False)
 
     # 10. Reports
-    db.session.execute(sa_delete(RepportRule).where(RepportRule.rule_id.in_(ids)))
+    RepportRule.query.filter(RepportRule.rule_id.in_(ids)).delete(synchronize_session=False)
 
     # 11. Ownership requests
-    db.session.execute(sa_delete(RequestOwnerRule).where(RequestOwnerRule.rule_id.in_(ids)))
+    RequestOwnerRule.query.filter(RequestOwnerRule.rule_id.in_(ids)).delete(synchronize_session=False)
 
     # 12. Update history
-    db.session.execute(sa_delete(RuleUpdateHistory).where(RuleUpdateHistory.rule_id.in_(ids)))
+    RuleUpdateHistory.query.filter(RuleUpdateHistory.rule_id.in_(ids)).delete(synchronize_session=False)
 
-    # 13. Similarity pairs (has ondelete=CASCADE at DB level but be explicit)
-    db.session.execute(sa_delete(RuleSimilarity).where(
+    # 13. Similarity pairs (has ondelete=CASCADE but be explicit)
+    RuleSimilarity.query.filter(
         or_(RuleSimilarity.rule_id.in_(ids), RuleSimilarity.similar_rule_id.in_(ids))
-    ))
+    ).delete(synchronize_session=False)
+
+    db.session.flush()
 
 
 def permanent_delete_rule(rule_id: int) -> bool:
@@ -265,7 +270,7 @@ def permanent_delete_bulk(rule_ids: list) -> int:
     if not valid_ids:
         return 0
     _wipe_rule_children(valid_ids)
-    db.session.execute(sa_delete(Rule).where(Rule.id.in_(valid_ids)))
+    Rule.query.filter(Rule.id.in_(valid_ids), Rule.is_deleted == True).delete(synchronize_session=False)
     db.session.commit()
     return len(valid_ids)
 
