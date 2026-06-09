@@ -1752,6 +1752,31 @@ class ActivityLog(db.Model):
             "icon":        self.icon,
             "created_at":  self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
         }
+    
+    def to_json_public(self):
+        username = "System"
+        try:
+            if self.user:
+                username = self.user.get_username()
+        except Exception:
+            pass
+        return {
+            "id":          self.id,
+            "uuid":        self.uuid,
+            "user_id":     self.user_id,
+            "username":    username,
+            "action":      self.action,
+            "description": self.description,
+            "url":         self.url,
+            "method":      self.method,
+            "target_type": self.target_type,
+            "target_id":   self.target_id,
+            "target_uuid": self.target_uuid,
+            "extra":       self.extra,
+            "is_public":   self.is_public,
+            "icon":        self.icon,
+            "created_at":  self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        }
 
 
 class RuleScope(db.Model):
