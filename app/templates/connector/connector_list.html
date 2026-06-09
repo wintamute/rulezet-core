@@ -10,7 +10,7 @@
 <div id="connector-app" v-cloak>
 <div class="container-xl py-4">
 
-   <!-- ── Banner ───────────────────────────────────────────────── -->
+   <!-- ── Banner ─────────────────────────────────────────── -->
    <div class="explorer-banner mb-4">
       <i class="fa-solid fa-plug banner-watermark"></i>
       <div class="d-flex align-items-center gap-3 mb-3">
@@ -21,127 +21,57 @@
          </div>
       </div>
       <p class="text-muted mb-0" style="max-width:600px;font-size:.95rem;">
-         Sync detection rules from remote Rulezet instances or other compatible platforms.
-         Each connector pulls content into your local instance under a dedicated shadow account.
+         Sync detection rules from remote Rulezet instances or compatible platforms.
+         Pulls are triggered by admins.
       </p>
    </div>
 
-   <!-- ── Toolbar ──────────────────────────────────────────────── -->
-   <div class="d-flex justify-content-between align-items-center mb-4">
-      <span class="text-muted small">[[ connectors.length ]] connector[[ connectors.length !== 1 ? 's' : '' ]] configured</span>
-      <button class="btn btn-primary btn-sm rounded-pill px-3" @click="openCreate">
-         <i class="fa-solid fa-plus me-1"></i>New Connector
-      </button>
-   </div>
-
-   <!-- ── Alert ────────────────────────────────────────────────── -->
+   <!-- ── Page-level alert (modal save feedback) ─────────── -->
    <div v-if="alert.message" :class="`alert alert-${alert.type} alert-dismissible fade show`" role="alert">
       [[ alert.message ]]
       <button type="button" class="btn-close" @click="alert.message = ''"></button>
    </div>
 
-   <!-- ── Grid ─────────────────────────────────────────────────── -->
-   <div v-if="loading" class="text-center py-5">
-      <div class="spinner-border text-primary" role="status"></div>
+   <!-- ═══════════════════════════════════════════════════════
+        SECTION 1 — Rulezet Instances
+   ════════════════════════════════════════════════════════ -->
+   <div class="d-flex align-items-center gap-2 mb-3">
+      <i class="fa-solid fa-shield-halved text-primary"></i>
+      <h5 class="fw-bold mb-0">Rulezet Instances</h5>
    </div>
 
-   <div v-else-if="connectors.length === 0" class="connector-empty">
-      <div class="connector-empty__icon"><i class="fa-solid fa-plug-circle-xmark"></i></div>
-      <h5 class="fw-bold mb-1">No connectors yet</h5>
-      <p class="mb-3">Add a remote Rulezet instance to start syncing rules.</p>
-      <button class="btn btn-primary rounded-pill px-4" @click="openCreate">
-         <i class="fa-solid fa-plus me-2"></i>Add Connector
-      </button>
+   <connector-table
+      ref="rulezetTable"
+      section="rulezet"
+      :is-admin="IS_ADMIN"
+      :csrf-token="CSRF"
+      @create="openCreate('rulezet')"
+      @edit="openEdit"
+      class="mb-5">
+   </connector-table>
+
+   <!-- ═══════════════════════════════════════════════════════
+        SECTION 2 — Other Connectors
+   ════════════════════════════════════════════════════════ -->
+   <div class="d-flex align-items-center gap-2 mb-3">
+      <i class="fa-solid fa-network-wired text-secondary"></i>
+      <h5 class="fw-bold mb-0">Other Connectors</h5>
+      <span class="badge bg-secondary" style="font-size:.65rem;">Coming soon</span>
    </div>
 
-   <div v-else class="row g-3">
-      <div v-for="c in connectors" :key="c.uuid" class="col-12 col-md-6 col-xl-4">
-         <div :class="['connector-card', !c.is_active && 'connector-card--inactive']">
-
-            <!-- header -->
-            <div class="connector-card__header">
-               <div :class="['connector-card__icon', c.is_verified ? 'connector-card__icon--verified' : c.last_error ? 'connector-card__icon--error' : '']">
-                  <i class="fa-solid fa-plug"></i>
-               </div>
-               <div class="flex-grow-1 min-w-0">
-                  <div class="d-flex align-items-center justify-content-between gap-2">
-                     <p class="connector-card__name">[[ c.name ]]</p>
-                     <span :class="['connector-status', statusClass(c)]">
-                        <i :class="statusIcon(c)"></i> [[ statusLabel(c) ]]
-                     </span>
-                  </div>
-                  <div class="connector-card__url">[[ c.instance_url ]]</div>
-               </div>
-            </div>
-
-            <!-- description -->
-            <p v-if="c.description" class="text-muted small mb-2" style="font-size:.8rem;">[[ c.description ]]</p>
-
-            <!-- type pill -->
-            <div class="mb-2">
-               <span class="connector-type-pill">
-                  <i class="fa-solid fa-code-branch me-1"></i>[[ c.connector_type ]]
-               </span>
-               <span v-if="!c.is_active" class="ms-1 badge bg-secondary" style="font-size:.68rem;">inactive</span>
-            </div>
-
-            <!-- stats -->
-            <div class="connector-stats">
-               <div class="connector-stat">
-                  <span class="connector-stat__value">[[ c.rules_count ]]</span>
-                  <span class="connector-stat__label">Rules</span>
-               </div>
-               <div class="connector-stat">
-                  <span class="connector-stat__value">[[ c.bundles_count ]]</span>
-                  <span class="connector-stat__label">Bundles</span>
-               </div>
-               <div v-if="c.sync_rules || c.sync_bundles" class="connector-stat">
-                  <span class="connector-stat__value" style="font-size:.75rem;">
-                     <i v-if="c.sync_rules" class="fa-solid fa-shield-halved text-primary me-1" title="Syncs rules"></i>
-                     <i v-if="c.sync_bundles" class="fa-solid fa-box text-primary" title="Syncs bundles"></i>
-                  </span>
-                  <span class="connector-stat__label">Syncing</span>
-               </div>
-            </div>
-
-            <!-- last sync -->
-            <div v-if="c.last_sync_at" class="connector-last-sync">
-               <i class="fa-solid fa-rotate me-1"></i>Last sync: [[ fmtDate(c.last_sync_at) ]]
-            </div>
-            <div v-if="c.last_error" class="mt-1" style="font-size:.75rem;color:#dc3545;">
-               <i class="fa-solid fa-triangle-exclamation me-1"></i>[[ c.last_error ]]
-            </div>
-
-            <!-- actions -->
-            <div class="connector-actions">
-               <button class="btn btn-sm btn-outline-secondary rounded-pill" @click="openEdit(c)" title="Edit">
-                  <i class="fa-solid fa-pen-to-square me-1"></i>Edit
-               </button>
-               <button class="btn btn-sm btn-outline-primary rounded-pill" @click="testConn(c)"
-                       :disabled="actionLoading[c.uuid]" title="Test connection">
-                  <span v-if="actionLoading[c.uuid] === 'test'" class="spinner-border spinner-border-sm me-1"></span>
-                  <i v-else class="fa-solid fa-wifi me-1"></i>Test
-               </button>
-               <button v-if="c.is_active" class="btn btn-sm btn-outline-success rounded-pill"
-                       @click="pullConn(c)" :disabled="actionLoading[c.uuid]" title="Pull now">
-                  <span v-if="actionLoading[c.uuid] === 'pull'" class="spinner-border spinner-border-sm me-1"></span>
-                  <i v-else class="fa-solid fa-cloud-arrow-down me-1"></i>Pull
-               </button>
-               <button class="btn btn-sm btn-outline-secondary rounded-pill" @click="openHistory(c)" title="History">
-                  <i class="fa-solid fa-clock-rotate-left me-1"></i>History
-               </button>
-               <button class="btn btn-sm btn-outline-danger rounded-pill ms-auto" @click="confirmDelete(c)" title="Delete">
-                  <i class="fa-solid fa-trash"></i>
-               </button>
-            </div>
-
-         </div>
-      </div>
-   </div>
+   <connector-table
+      ref="otherTable"
+      section="other"
+      :is-admin="IS_ADMIN"
+      :csrf-token="CSRF"
+      @create="openCreate('other')"
+      @edit="openEdit"
+      class="mb-5">
+   </connector-table>
 
 </div><!-- /container -->
 
-<!-- ── Create / Edit modal ─────────────────────────────────────── -->
+<!-- ── Create / Edit modal ────────────────────────────────── -->
 <div class="modal fade" id="connectorModal" tabindex="-1">
    <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content border-0 shadow-lg" style="background:var(--card-bg-color);">
@@ -154,6 +84,19 @@
          </div>
          <div class="modal-body p-4">
 
+            <!-- Icon picker -->
+            <div class="mb-3">
+               <label class="connector-form-label">Icon</label>
+               <div class="d-flex gap-2 flex-wrap">
+                  <button v-for="ic in ICON_OPTIONS" :key="ic.cls"
+                     type="button"
+                     :class="['btn', 'btn-sm', 'rounded-pill', form.icon === ic.cls ? 'btn-primary' : 'btn-outline-secondary']"
+                     @click="form.icon = ic.cls" :title="ic.label">
+                     <i :class="ic.cls + ' me-1'"></i>[[ ic.label ]]
+                  </button>
+               </div>
+            </div>
+
             <div class="mb-3">
                <label class="connector-form-label">Name <span class="text-danger">*</span></label>
                <input v-model="form.name" type="text" class="form-control"
@@ -164,20 +107,33 @@
                <label class="connector-form-label">Instance URL <span class="text-danger">*</span></label>
                <input v-model="form.instance_url" type="url" class="form-control"
                       placeholder="https://rulezet.example.com">
-               <div class="connector-form-hint">Base URL of the remote Rulezet instance (no trailing slash).</div>
-            </div>
-
-            <div class="mb-3">
-               <label class="connector-form-label">Type</label>
-               <select v-model="form.connector_type" class="form-select">
-                  <option value="rulezet">Rulezet</option>
-               </select>
             </div>
 
             <div class="mb-3">
                <label class="connector-form-label">Description</label>
                <input v-model="form.description" type="text" class="form-control"
-                      placeholder="Optional short note" maxlength="255">
+                      placeholder="Optional note" maxlength="255">
+            </div>
+
+            <!-- Owner mode -->
+            <div class="mb-3">
+               <label class="connector-form-label">Imported content ownership</label>
+               <div class="d-flex gap-3 mt-1">
+                  <div class="form-check">
+                     <input class="form-check-input" type="radio" id="modeShd" value="shadow" v-model="form.owner_mode">
+                     <label class="form-check-label" for="modeShd">
+                        <strong>Shadow user</strong>
+                        <div class="connector-form-hint">A ghost account owns imported rules — keeps your account clean</div>
+                     </label>
+                  </div>
+                  <div class="form-check">
+                     <input class="form-check-input" type="radio" id="modeSelf" value="self" v-model="form.owner_mode">
+                     <label class="form-check-label" for="modeSelf">
+                        <strong>Become owner</strong>
+                        <div class="connector-form-hint">You become the owner of all imported rules and public bundles</div>
+                     </label>
+                  </div>
+               </div>
             </div>
 
             <div class="d-flex gap-4 mb-1">
@@ -198,7 +154,6 @@
             <div v-if="formError" class="alert alert-danger mt-3 mb-0 py-2">
                <i class="fa-solid fa-circle-exclamation me-1"></i>[[ formError ]]
             </div>
-
          </div>
          <div class="modal-footer border-top">
             <button class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
@@ -211,172 +166,88 @@
    </div>
 </div>
 
-<!-- ── Delete confirmation modal ──────────────────────────────── -->
-<div class="modal fade" id="deleteModal" tabindex="-1">
-   <div class="modal-dialog modal-dialog-centered modal-sm">
-      <div class="modal-content border-0 shadow-lg" style="background:var(--card-bg-color);">
-         <div class="modal-body text-center p-4">
-            <i class="fa-solid fa-trash-can fa-2x text-danger mb-3"></i>
-            <h6 class="fw-bold mb-1">Delete connector?</h6>
-            <p class="text-muted small mb-3">
-               The connector "<strong>[[ toDelete?.name ]]</strong>" will be removed.
-               Rules and bundles imported from it will remain but lose their sync link.
-            </p>
-            <div class="d-flex gap-2 justify-content-center">
-               <button class="btn btn-secondary btn-sm rounded-pill" data-bs-dismiss="modal">Cancel</button>
-               <button class="btn btn-danger btn-sm rounded-pill px-3" @click="doDelete" :disabled="saving">
-                  <span v-if="saving" class="spinner-border spinner-border-sm me-1"></span>
-                  Delete
-               </button>
-            </div>
-         </div>
-      </div>
-   </div>
-</div>
-
-<!-- ── History modal ──────────────────────────────────────────── -->
-<div class="modal fade" id="historyModal" tabindex="-1">
-   <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content border-0 shadow-lg" style="background:var(--card-bg-color);">
-         <div class="modal-header border-bottom">
-            <h5 class="modal-title fw-bold">
-               <i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>
-               History — [[ historyConnector?.name ]]
-            </h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-         </div>
-         <div class="modal-body p-0">
-            <div v-if="historyLoading" class="text-center py-5">
-               <div class="spinner-border text-primary" role="status"></div>
-            </div>
-            <div v-else-if="historyEntries.length === 0" class="text-center py-5 text-muted">
-               <i class="fa-solid fa-inbox fa-2x mb-3 opacity-25"></i>
-               <p class="mb-0">No history yet for this connector.</p>
-            </div>
-            <div v-else class="table-responsive">
-               <table class="table table-hover mb-0" style="font-size:.83rem;">
-                  <thead style="background:var(--light-bg-color);">
-                     <tr>
-                        <th class="px-4 py-2 fw-semibold">Date</th>
-                        <th class="py-2 fw-semibold">Event</th>
-                        <th class="py-2 fw-semibold">Details</th>
-                     </tr>
-                  </thead>
-                  <tbody>
-                     <tr v-for="e in historyEntries" :key="e.timestamp + e.action">
-                        <td class="px-4 py-2 text-nowrap" style="color:var(--subtle-text-color);">
-                           [[ e.timestamp ]]
-                        </td>
-                        <td class="py-2">
-                           <span :class="['badge', actionBadgeClass(e.action)]" style="font-size:.7rem;">
-                              <i :class="[actionIcon(e.action), 'me-1']"></i>[[ e.action ]]
-                           </span>
-                        </td>
-                        <td class="py-2" style="color:var(--text-color);">
-                           [[ e.description ]]
-                           <span v-if="e.extra?.rules_added !== undefined" class="ms-1 text-muted">
-                              (+[[ e.extra.rules_added ]] rules, +[[ e.extra.bundles_added ]] bundles)
-                           </span>
-                        </td>
-                     </tr>
-                  </tbody>
-               </table>
-            </div>
-         </div>
-         <div class="modal-footer border-top">
-            <button class="btn btn-secondary btn-sm rounded-pill" data-bs-dismiss="modal">Close</button>
-         </div>
-      </div>
-   </div>
-</div>
-
 </div><!-- /connector-app -->
 {% endblock %}
 
 {% block script %}
 <script type="module">
+import ConnectorTable from '/static/js/connector/connectorTable.js'
+
 const { createApp, ref, reactive, onMounted } = Vue
+
+const CSRF     = '{{ csrf_token() }}'
+const IS_ADMIN = {{ 'true' if current_user.is_admin() else 'false' }}
+
+const ICON_OPTIONS = [
+   { cls: 'fa-solid fa-plug',          label: 'Plug' },
+   { cls: 'fa-solid fa-shield-halved', label: 'Shield' },
+   { cls: 'fa-solid fa-network-wired', label: 'Network' },
+   { cls: 'fa-solid fa-cloud',         label: 'Cloud' },
+   { cls: 'fa-solid fa-server',        label: 'Server' },
+   { cls: 'fa-solid fa-globe',         label: 'Globe' },
+   { cls: 'fa-brands fa-github',       label: 'GitHub' },
+   { cls: 'fa-solid fa-lock',          label: 'Lock' },
+]
 
 createApp({
    delimiters: ['[[', ']]'],
+   components: { 'connector-table': ConnectorTable },
    setup() {
-      const CSRF = '{{ csrf_token() }}'
+      const rulezetTable = ref(null)
+      const otherTable   = ref(null)
 
-      const connectors   = ref([])
-      const loading      = ref(true)
-      const saving       = ref(false)
-      const actionLoading = reactive({})
-      const alert        = reactive({ message: '', type: 'success' })
-
-      const editMode     = ref(false)
-      const editUuid     = ref(null)
-      const toDelete     = ref(null)
-      const formError    = ref('')
-
-      // history
-      const historyConnector = ref(null)
-      const historyEntries   = ref([])
-      const historyLoading   = ref(false)
-      let bsHistoryModal
+      const saving    = ref(false)
+      const alert     = reactive({ message: '', type: 'success' })
+      const editMode  = ref(false)
+      const editUuid  = ref(null)
+      const formError = ref('')
 
       const form = reactive({
-         name: '', instance_url: '', api_key_outbound: '',
-         connector_type: 'rulezet', description: '',
-         sync_rules: true, sync_bundles: false, is_active: true,
+         name: '', instance_url: '', description: '',
+         icon: 'fa-solid fa-plug',
+         connector_type: 'rulezet',
+         sync_rules: true, sync_bundles: false,
+         is_active: true, owner_mode: 'shadow',
       })
 
-      // ── Bootstrap modal refs ──────────────────────────────────
-      let bsModal, bsDeleteModal
+      let bsModal
 
       onMounted(() => {
          const Modal = window.bootstrap?.Modal
-         if (Modal) {
-            bsModal        = new Modal(document.getElementById('connectorModal'))
-            bsDeleteModal  = new Modal(document.getElementById('deleteModal'))
-            bsHistoryModal = new Modal(document.getElementById('historyModal'))
-         }
-         fetchConnectors()
+         if (Modal) bsModal = new Modal(document.getElementById('connectorModal'))
       })
 
-      // ── Data ──────────────────────────────────────────────────
-      async function fetchConnectors() {
-         loading.value = true
-         try {
-            const res  = await fetch('/connector/get')
-            connectors.value = await res.json()
-         } catch { showAlert('Failed to load connectors.', 'danger') }
-         finally { loading.value = false }
-      }
-
-      // ── Form ──────────────────────────────────────────────────
-      function resetForm() {
+      function resetForm(type = 'rulezet') {
          Object.assign(form, {
-            name: '', instance_url: '', api_key_outbound: '',
-            connector_type: 'rulezet', description: '',
-            sync_rules: true, sync_bundles: false, is_active: true,
+            name: '', instance_url: '', description: '',
+            icon: 'fa-solid fa-plug',
+            connector_type: type,
+            sync_rules: true, sync_bundles: false,
+            is_active: true, owner_mode: 'shadow',
          })
          formError.value = ''
       }
 
-      function openCreate() {
+      function openCreate(type = 'rulezet') {
          editMode.value = false
          editUuid.value = null
-         resetForm()
+         resetForm(type)
          bsModal?.show()
       }
 
       function openEdit(c) {
-         editMode.value  = true
-         editUuid.value  = c.uuid
+         editMode.value = true
+         editUuid.value = c.uuid
          Object.assign(form, {
-            name:               c.name,
-            instance_url:       c.instance_url,
-            api_key_outbound:   '',          // never pre-fill key
-            connector_type:     c.connector_type,
-            description:        c.description || '',
-            sync_rules:         c.sync_rules,
-            sync_bundles:       c.sync_bundles,
-            is_active:          c.is_active,
+            name:           c.name,
+            instance_url:   c.instance_url,
+            description:    c.description || '',
+            icon:           c.icon || 'fa-solid fa-plug',
+            connector_type: c.connector_type,
+            sync_rules:     c.sync_rules,
+            sync_bundles:   c.sync_bundles,
+            is_active:      c.is_active,
+            owner_mode:     c.owner_mode,
          })
          formError.value = ''
          bsModal?.show()
@@ -390,15 +261,18 @@ createApp({
          }
          saving.value = true
          try {
-            const url    = editMode.value ? `/connector/update/${editUuid.value}` : '/connector/create'
-            const body   = { ...form }
-            if (!body.api_key_outbound) delete body.api_key_outbound
-            const res    = await post(url, body)
-            const data   = await res.json()
+            const url  = editMode.value ? `/connector/update/${editUuid.value}` : '/connector/create'
+            const res  = await fetch(url, {
+               method:  'POST',
+               headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+               body:    JSON.stringify({ ...form }),
+            })
+            const data = await res.json()
             if (data.success) {
                bsModal?.hide()
                showAlert(editMode.value ? 'Connector updated.' : 'Connector created.', 'success')
-               fetchConnectors()
+               rulezetTable.value?.refresh()
+               otherTable.value?.refresh()
             } else {
                formError.value = data.error || 'An error occurred.'
             }
@@ -406,140 +280,17 @@ createApp({
          finally { saving.value = false }
       }
 
-      // ── Delete ────────────────────────────────────────────────
-      function confirmDelete(c) {
-         toDelete.value = c
-         bsDeleteModal?.show()
-      }
-
-      async function doDelete() {
-         if (!toDelete.value) return
-         saving.value = true
-         try {
-            const res  = await post(`/connector/delete/${toDelete.value.uuid}`, {})
-            const data = await res.json()
-            if (data.success) {
-               bsDeleteModal?.hide()
-               showAlert('Connector deleted.', 'success')
-               fetchConnectors()
-            } else {
-               showAlert(data.error || 'Delete failed.', 'danger')
-            }
-         } catch { showAlert('Network error.', 'danger') }
-         finally { saving.value = false }
-      }
-
-      // ── Actions ───────────────────────────────────────────────
-      async function testConn(c) {
-         actionLoading[c.uuid] = 'test'
-         try {
-            const res  = await post(`/connector/test/${c.uuid}`, {})
-            const data = await res.json()
-            showAlert(data.message || (data.success ? 'Connection OK.' : 'Connection failed.'),
-                      data.success ? 'success' : 'danger')
-            fetchConnectors()
-         } catch { showAlert('Network error.', 'danger') }
-         finally { delete actionLoading[c.uuid] }
-      }
-
-      async function pullConn(c) {
-         actionLoading[c.uuid] = 'pull'
-         try {
-            const res  = await post(`/connector/pull/${c.uuid}`, {})
-            const data = await res.json()
-            if (data.success) {
-               showAlert('Pull job queued. Check Background Jobs for progress.', 'success')
-            } else {
-               showAlert(data.error || 'Could not start pull.', 'danger')
-            }
-         } catch { showAlert('Network error.', 'danger') }
-         finally { delete actionLoading[c.uuid] }
-      }
-
-      // ── History ───────────────────────────────────────────────
-      async function openHistory(c) {
-         historyConnector.value = c
-         historyEntries.value   = []
-         historyLoading.value   = true
-         bsHistoryModal?.show()
-         try {
-            const res = await fetch(`/connector/history/${c.uuid}`)
-            historyEntries.value = await res.json()
-         } catch { historyEntries.value = [] }
-         finally { historyLoading.value = false }
-      }
-
-      function actionBadgeClass(action) {
-         if (action.includes('pull_done'))     return 'bg-success'
-         if (action.includes('pull_trigger'))  return 'bg-primary'
-         if (action.includes('test_ok'))       return 'bg-info text-dark'
-         if (action.includes('error'))         return 'bg-danger'
-         if (action.includes('create'))        return 'bg-secondary'
-         if (action.includes('delete'))        return 'bg-danger'
-         if (action.includes('update'))        return 'bg-warning text-dark'
-         return 'bg-secondary'
-      }
-
-      function actionIcon(action) {
-         if (action.includes('pull_done'))     return 'fa-solid fa-cloud-arrow-down'
-         if (action.includes('pull_trigger'))  return 'fa-solid fa-play'
-         if (action.includes('test'))          return 'fa-solid fa-wifi'
-         if (action.includes('create'))        return 'fa-solid fa-plus'
-         if (action.includes('delete'))        return 'fa-solid fa-trash'
-         if (action.includes('update'))        return 'fa-solid fa-pen'
-         return 'fa-solid fa-circle-dot'
-      }
-
-      // ── Helpers ───────────────────────────────────────────────
-      function statusClass(c) {
-         if (!c.is_active)  return 'connector-status--inactive'
-         if (c.last_error)  return 'connector-status--error'
-         if (c.is_verified) return 'connector-status--ok'
-         return 'connector-status--pending'
-      }
-
-      function statusIcon(c) {
-         if (!c.is_active)  return 'fa-solid fa-pause'
-         if (c.last_error)  return 'fa-solid fa-circle-exclamation'
-         if (c.is_verified) return 'fa-solid fa-circle-check'
-         return 'fa-solid fa-circle-question'
-      }
-
-      function statusLabel(c) {
-         if (!c.is_active)  return 'Inactive'
-         if (c.last_error)  return 'Error'
-         if (c.is_verified) return 'Verified'
-         return 'Pending'
-      }
-
-      function fmtDate(iso) {
-         if (!iso) return '—'
-         return new Date(iso).toLocaleString()
-      }
-
       function showAlert(msg, type = 'success') {
          alert.message = msg
          alert.type    = type
-         setTimeout(() => { alert.message = '' }, 5000)
-      }
-
-      async function post(url, body) {
-         return fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-            body: JSON.stringify(body),
-         })
+         setTimeout(() => { alert.message = '' }, 6000)
       }
 
       return {
-         connectors, loading, saving, actionLoading, alert,
-         editMode, toDelete, form, formError,
+         IS_ADMIN, CSRF, ICON_OPTIONS,
+         rulezetTable, otherTable,
+         saving, alert, editMode, form, formError,
          openCreate, openEdit, saveConnector,
-         confirmDelete, doDelete,
-         testConn, pullConn,
-         openHistory, historyConnector, historyEntries, historyLoading,
-         actionBadgeClass, actionIcon,
-         statusClass, statusIcon, statusLabel, fmtDate,
       }
    }
 }).mount('#connector-app')

@@ -904,7 +904,7 @@ def handle_connector_pull(job, app):
                     data  = resp.json()
                     items = data.get('rules', [])
                     for item in items:
-                        if _upsert_rule(connector, shadow.id, item):
+                        if _upsert_rule(connector, effective_user_id, item):
                             rules_added += 1
                         job.done = min(rules_added + bundles_added, job.total)
                     db.session.commit()
@@ -937,7 +937,7 @@ def handle_connector_pull(job, app):
                     data  = resp.json()
                     items = data.get('bundles', [])
                     for item in items:
-                        if _upsert_bundle(connector, shadow.id, item):
+                        if _upsert_bundle(connector, effective_user_id, item):
                             bundles_added += 1
                         job.done = min(rules_added + bundles_added, job.total)
                     db.session.commit()

@@ -86,6 +86,20 @@ class SyncManifest(Resource):
         }, 200
 
 
+# ─── Stats ────────────────────────────────────────────────────────────────────
+
+@sync_ns.route('/stats')
+class SyncStats(Resource):
+    @sync_ns.doc(description="Returns public rule and bundle counts for this instance. No auth required.")
+    def get(self):
+        rules_count   = Rule.query.filter(Rule.is_deleted == False).count()
+        bundles_count = Bundle.query.filter(Bundle.access == True).count()
+        return {
+            'rules':   rules_count,
+            'bundles': bundles_count,
+        }, 200
+
+
 # ─── Rules ────────────────────────────────────────────────────────────────────
 
 @sync_ns.route('/rules')

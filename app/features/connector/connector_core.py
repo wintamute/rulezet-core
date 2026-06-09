@@ -156,38 +156,55 @@ def delete_connector(connector: Connector) -> bool:
 
 # ─── Connection test ──────────────────────────────────────────────────────────
 
-def test_connector(connector: Connector) -> tuple[bool, str]:
+def test_connector(connector: Connector) -> tuple[bool, str, dict]:
     """
-    Ping the remote /api/sync/manifest endpoint.
-    Returns (success: bool, message: str).
+    Ping the remote /api/sync/manifest then /api/sync/stats.
+    Returns (success: bool, message: str, stats: dict).
+    stats contains 'rules' and 'bundles' counts from the remote (or {}).
     """
-    url = f"{connector.instance_url}/api/sync/manifest"
+    base    = connector.instance_url
     headers = {}
     if connector.api_key_outbound:
         headers['X-API-KEY'] = connector.api_key_outbound
     try:
-        resp = http_requests.get(url, headers=headers, timeout=8)
-        if resp.status_code == 200:
-            data = resp.json()
-            remote_name = data.get('instance', {}).get('name', 'unknown')
-            connector.is_verified = True
-            connector.last_error  = None
-            db.session.commit()
-            log_activity('connector.test_ok',
-                         f"Connection test OK for '{connector.name}' → {remote_name}",
-                         target_type='connector', target_id=connector.id,
-                         target_uuid=connector.uuid)
-            return True, f"Connected to \"{remote_name}\" successfully."
-        else:
+        resp = http_requests.get(f"{base}/api/sync/manifest", headers=headers, timeout=8)
+        if resp.status_code != 200:
             msg = f"Remote returned HTTP {resp.status_code}."
             connector.last_error = msg
             db.session.commit()
-            return False, msg
+            return False, msg, {}
+
+        remote_name = resp.json().get('instance', {}).get('name', 'unknown')
+
+        # Fetch public stats (best-effort — non-fatal if absent)
+        stats: dict = {}
+        try:
+            sr = http_requests.get(f"{base}/api/sync/stats", headers=headers, timeout=5)
+            if sr.status_code == 200:
+                sd = sr.json()
+                stats = {'rules': sd.get('rules'), 'bundles': sd.get('bundles')}
+        except Exception:
+            pass
+
+        connector.is_verified = True
+        connector.last_error  = None
+        db.session.commit()
+
+        stats_str = ''
+        if stats.get('rules') is not None:
+            stats_str = f" — {stats['rules']:,} rules, {stats['bundles']:,} bundles"
+
+        log_activity('connector.test_ok',
+                     f"Connection test OK for '{connector.name}' → {remote_name}{stats_str}",
+                     target_type='connector', target_id=connector.id,
+                     target_uuid=connector.uuid)
+        return True, f"Connected to \"{remote_name}\"{stats_str}.", stats
+
     except Exception as e:
         msg = f"Connection error: {e}"
         connector.last_error = msg
         db.session.commit()
-        return False, msg
+        return False, msg, {}
 
 
 # ─── Pull (trigger background job) ───────────────────────────────────────────

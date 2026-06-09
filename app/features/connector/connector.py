@@ -96,15 +96,17 @@ def test_connector(connector_uuid):
     if not connector:
         return jsonify({'success': False, 'error': 'Not found.'}), 404
 
-    ok, msg = ConnectorModel.test_connector(connector)
-    return jsonify({'success': ok, 'message': msg}), 200
+    ok, msg, stats = ConnectorModel.test_connector(connector)
+    return jsonify({'success': ok, 'message': msg, 'stats': stats}), 200
 
 
 @connector_blueprint.route('/history/<string:connector_uuid>', methods=['GET'])
 @login_required
 def connector_history(connector_uuid):
-    connector = ConnectorModel.get_connector_by_uuid(connector_uuid, owner_id=current_user.id)
+    connector = ConnectorModel.get_connector_by_uuid(connector_uuid)
     if not connector:
+        return jsonify({'success': False, 'error': 'Not found.'}), 404
+    if not connector.is_system and connector.owner_id != current_user.id:
         return jsonify({'success': False, 'error': 'Not found.'}), 404
     return jsonify(ConnectorModel.get_connector_history(connector)), 200
 
