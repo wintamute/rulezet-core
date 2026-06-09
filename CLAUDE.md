@@ -357,7 +357,120 @@ log_activity("rule.create", f"Created rule '{rule.title}'",
 
 **Public activity feed** (`/activity_feed`): only entries with `is_public=True` are shown; the `_is_accessible(log)` helper additionally checks that the linked rule/bundle/comment still exists and is not deleted.
 
-**Logged everywhere**: rule create/edit/delete/vote/favorite/bulk-delete/scope change, bundle create/edit/delete, user login/logout/register/edit/delete, admin promote/demote/request approve/reject, tag create/edit/delete/toggle, job create/cancel/pause/resume/delete, GitHub source delete.
+**Logged everywhere**: rule create/edit/delete/vote/favorite/bulk-delete/scope change, bundle create/edit/delete, user login/logout/register/edit/delete, admin promote/demote/request approve/reject, tag create/edit/delete/toggle, job create/cancel/pause/resume/delete, GitHub source delete, connector create/update/delete/test/pull.
+
+### Connector / Federation sync system
+
+Connectors allow an admin to link this Rulezet instance to another and pull detection rules from it. **Accessible to admins only** (enforced via `connector_blueprint.before_request` — non-admins get 403, unauthenticated users are redirected to login). The sidebar link is also hidden for non-admins.
+
+#### Files
+
+| File | Role |
+|------|------|
+| `app/features/connector/connector.py` | Blueprint — UI routes, all gated by `_require_admin()` before_request |
+| `app/features/connector/connector_core.py` | Business logic: CRUD, shadow user, test, pull trigger, sync helpers |
+| `app/features/jobs/job_handlers.py` | `handle_connector_pull` — background job handler that drives the actual sync |
+| `app/api/connector/connector_sync_api.py` | Sync API exposed **by** this instance to remote connectors (`/api/sync/…`) |
+| `app/static/js/connector/connectorTable.js` | Vue 3 component — table + card view, pull dropdown, history timeline |
+| `app/templates/connector/connector_list.html` | Page template — uses `ConnectorTable` component |
+| `app/static/css/connector/connector.css` | Connector-specific styles |
+
+#### Data model (`Connector` in `db.py`)
+
+| Field | Purpose |
+|-------|---------|
+| `uuid` | Public identifier |
+| `name` / `description` / `icon` | Display info |
+| `connector_type` | `'rulezet'` (only type currently implemented) |
+| `instance_url` | Base URL of the remote instance (stripped of trailing `/`) |
+| `api_key_outbound` | Optional key sent in `X-API-KEY` header when calling the remote |
+| `owner_id` | Admin user who created the connector |
+| `owner_mode` | `'shadow'` — a ghost account owns imported rules; `'self'` — the triggering admin owns them |
+| `sync_rules` / `sync_bundles` | What to synchronize |
+| `is_active` | Disabling prevents new pulls |
+| `is_system` | `True` for the read-only official Rulezet connector (cannot be modified or deleted) |
+| `shadow_user_id` | FK to the auto-created ghost `User` for `owner_mode='shadow'` |
+| `last_sync_at` | Timestamp of last completed pull |
+| `last_error` | Last connection error string |
+
+#### Rule origin fields (on the `Rule` model)
+
+| Field | Purpose |
+|-------|---------|
+| `connector_id` | FK to the `Connector` that imported this rule (SET NULL if connector deleted) |
+| `remote_rule_uuid` | UUID of the rule **on the remote instance** — used for deduplication |
+| `sync_instance_url` | URL of the remote instance — persisted even after connector deletion; shown in rule detail as "Synced from" |
+
+`source` is kept **intact** from the remote (original GitHub URL etc.) — it is never overwritten with the connector URL.
+
+#### Sync API (exposed by this instance — `app/api/connector/connector_sync_api.py`)
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `GET /api/sync/manifest` | None | Instance identity + capabilities |
+| `GET /api/sync/stats` | None | Public rule/bundle counts |
+| `GET /api/sync/rules` | None | Paginated rules with `?since=`, `?page=`, `?per_page=` |
+| `GET /api/sync/bundles` | None | Paginated public bundles |
+
+`_rule_to_sync_json()` includes `update_history` (list of `RuleUpdateHistory` entries) so pulling instances can import the full change history.
+
+#### Pull modes
+
+| Mode | Behaviour |
+|------|-----------|
+| **Soft** | Fetches all rules from remote (`since=1970` to get everything). For each rule: checks locally by `remote_rule_uuid` then by `to_string` content. **If match found → skip. If no match → create.** Existing rules and their history are never touched. |
+| **Hard** | Same lookup. **If match found → soft-delete local rule (goes to trash), salvage its `RuleUpdateHistory`, create fresh rule from remote, import salvaged history + remote history. If no match → create + import remote history.** The local rule can be restored from trash. |
+
+#### `_upsert_rule` logic (`connector_core.py`)
+
+```python
+# 1. Find local match: by remote_rule_uuid, then by to_string
+# 2. Soft mode + match → return 'skipped'
+# 3. Hard mode + match → soft-delete local, collect salvaged_history
+# 4. Create new Rule(remote_rule_uuid=..., sync_instance_url=connector.instance_url, source=remote['source'], ...)
+# 5. _sync_tags() — attach tags that exist locally, skip unknown
+# 6. _import_rule_history(rule, salvaged_history + remote['update_history'])
+# Returns: 'created' | 'skipped' | 'invalid'
+```
+
+Owner of the created rule:
+- `owner_mode='shadow'` → `shadow_user_id` (the ghost account)
+- `owner_mode='self'` + hard pull → the admin who triggered the pull (`triggered_by_id`)
+
+#### Background job (`handle_connector_pull` in `job_handlers.py`)
+
+Job type: `connector_pull`. Payload: `{ connector_id, mode }`.
+
+- Fetches all pages from `/api/sync/rules` (soft: `since=1970`, hard: `since=last_sync_at`)
+- Calls `_upsert_rule()` per rule, tallies `rules_created / rules_skipped / rules_errors`
+- Fetches bundles if `connector.sync_bundles`, calls `_upsert_bundle()`
+- Sets `job.done = job.total` at completion (critical — was hardcoded to 1)
+- Logs `connector.pull_done` with full stats in `extra`
+
+#### Self-sync prevention
+
+`_is_self(instance_url)` compares the **full netloc** (`host:port`) of the connector URL against `request.host`. Prevents pulling from the current instance even on a different port (e.g. `127.0.0.1:7009` ≠ `127.0.0.1:7010`).
+
+#### Shadow user
+
+Each connector lazily creates a ghost `User` with email `shadow_<uuid8>@connector.local` and a random unusable password. This user owns all rules imported in `owner_mode='shadow'`. Retrieved via `_get_or_create_shadow_user(connector)`.
+
+#### Official connector
+
+`seed_official_connector()` (called at app start) creates a read-only system connector pointing to `https://rulezet.org` if none exists yet. It cannot be modified or deleted.
+
+#### UI (`connectorTable.js`)
+
+- `ConnectorRow` (table) and `ConnectorCard` (card) Vue components, both in `connectorTable.js`
+- Pull button is a single Bootstrap dropdown with **Soft pull** / **Hard pull** options; disabled if `is_self`
+- `is_self` connectors show an orange "self" badge; pull is blocked client-side and server-side
+- History timeline shows the last 30 `ActivityLog` entries; displayed 2 at a time with "Show more" (+5 per click)
+- All notifications use `create_message(msg, class)` from `/static/js/toaster.js` — no inline alert divs
+- Bulk pull skips self-connectors automatically
+
+#### Activity actions logged
+
+`connector.create`, `connector.update`, `connector.delete`, `connector.test_ok`, `connector.pull_triggered`, `connector.pull_done`
 
 ### UI conventions
 

@@ -101,8 +101,8 @@
                </li>
                {% endif %}
 
-               <!-- ── Connectors ── -->
-               {% if current_user.is_authenticated %}
+               <!-- ── Connectors (admin only) ── -->
+               {% if current_user.is_authenticated and current_user.is_admin() %}
                <li class="nav-item">
                   <a class="nav-link custom-nav-link fw-bold {% if request.path.startswith('/connector') %}active{% endif %}"
                      href="/connector/list">

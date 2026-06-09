@@ -157,8 +157,9 @@ class Rule(db.Model):
     delete_batch_uuid = db.Column(db.String(36), nullable=True, index=True)
 
     # Connector origin — set when a rule is imported via a connector
-    connector_id      = db.Column(db.Integer, db.ForeignKey('connector.id', ondelete='SET NULL'), nullable=True, index=True)
-    remote_rule_uuid  = db.Column(db.String(36), nullable=True, index=True)  # UUID on the remote instance
+    connector_id       = db.Column(db.Integer, db.ForeignKey('connector.id', ondelete='SET NULL'), nullable=True, index=True)
+    remote_rule_uuid   = db.Column(db.String(36), nullable=True, index=True)  # UUID on the remote instance
+    sync_instance_url  = db.Column(db.String(255), nullable=True)             # Instance URL the rule was pulled from (persisted even if connector deleted)
 
     #edit
     def get_rule_user_first_name_by_id(self):
@@ -199,8 +200,9 @@ class Rule(db.Model):
             "github_path": self.github_path if self.github_path else None,
             "editor": self.get_rule_user_first_name_by_id(),
             "editor_avatar": submitter_avatar,
+            "sync_instance_url": self.sync_instance_url,
         }
-    
+
     def get_extension(self):
         """ Get the file extension for each format """
         format_name = self.format.lower() if self.format else ""

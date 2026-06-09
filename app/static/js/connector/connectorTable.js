@@ -111,8 +111,13 @@ const ConnectorRow = {
         const historyItems   = ref([])
         const historyLoading = ref(false)
         const actionBusy     = ref(null)
+        const historyPage    = ref(2)   // number of items currently visible
 
-        const historyStats = computed(() => _computeStats(historyItems.value))
+        const historyStats   = computed(() => _computeStats(historyItems.value))
+        const visibleHistory = computed(() => historyItems.value.slice(0, historyPage.value))
+        const hasMoreHistory = computed(() => historyPage.value < historyItems.value.length)
+
+        function loadMoreHistory() { historyPage.value += 5 }
 
         async function doPost(url, body = {}) {
             return fetch(url, {
@@ -176,6 +181,7 @@ const ConnectorRow = {
 
         return {
             expanded, historyItems, historyLoading, actionBusy, historyStats,
+            visibleHistory, hasMoreHistory, loadMoreHistory,
             statusClass, statusLabel, statusIcon,
             actionBadgeClass, actionIcon, dotClass,
             testConn, pullConn, deleteConn, toggleHistory,
@@ -250,14 +256,14 @@ const ConnectorRow = {
                 <button class="dropdown-item" @click="pullConn('soft')">
                   <i class="fa-solid fa-feather me-2 text-success"></i>
                   <strong>Soft pull</strong>
-                  <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Add new only — skip existing</div>
+                  <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Safe — imports only rules that don't exist locally yet (checked by UUID and content). Existing rules are never touched.</div>
                 </button>
               </li>
               <li>
                 <button class="dropdown-item" @click="pullConn('hard')">
                   <i class="fa-solid fa-bolt me-2 text-warning"></i>
                   <strong>Hard pull</strong>
-                  <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Add new + overwrite if remote is newer</div>
+                  <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Aggressive — if a local rule matches (by UUID or content), it is moved to trash and replaced by the remote version. Use to force a full resync.</div>
                 </button>
               </li>
             </ul>
@@ -349,7 +355,7 @@ const ConnectorRow = {
 
         <!-- Timeline -->
         <div class="cnt-timeline">
-          <div v-for="(e, idx) in historyItems" :key="e.timestamp+e.action+idx" class="cnt-timeline-item">
+          <div v-for="(e, idx) in visibleHistory" :key="e.timestamp+e.action+idx" class="cnt-timeline-item">
             <div class="cnt-timeline-dot" :class="'cnt-timeline-dot--'+dotClass(e.action)"></div>
             <div class="cnt-timeline-content">
               <div class="cnt-timeline-header">
@@ -364,7 +370,6 @@ const ConnectorRow = {
                   <i :class="e.extra.mode==='hard' ? 'fa-solid fa-bolt' : 'fa-solid fa-feather'" class="me-1"></i>[[ e.extra.mode ]]
                 </span>
                 <span title="Rules added"><i class="fa-solid fa-shield-halved me-1 text-primary"></i>+[[ e.extra.rules_added ]]</span>
-                <span v-if="e.extra.rules_updated" title="Rules updated"><i class="fa-solid fa-rotate me-1 text-warning"></i>~[[ e.extra.rules_updated ]]</span>
                 <span v-if="e.extra.rules_skipped" title="Rules skipped"><i class="fa-solid fa-forward me-1 text-secondary"></i>=[[ e.extra.rules_skipped ]]</span>
                 <span title="Bundles added"><i class="fa-solid fa-box me-1 text-secondary"></i>+[[ e.extra.bundles_added ]]</span>
                 <span v-if="e.extra.rules_errors" title="Errors" class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i>[[ e.extra.rules_errors ]] err</span>
@@ -372,6 +377,13 @@ const ConnectorRow = {
               </div>
             </div>
           </div>
+        </div>
+        <!-- Show more -->
+        <div v-if="hasMoreHistory" class="text-center pt-2">
+          <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" style="font-size:.75rem;" @click="loadMoreHistory">
+            <i class="fa-solid fa-chevron-down me-1"></i>Show more
+            <span class="text-muted ms-1">([[ historyItems.length - visibleHistory.length ]] hidden)</span>
+          </button>
         </div>
       </template>
     </td>
@@ -397,8 +409,13 @@ const ConnectorCard = {
         const historyItems   = ref([])
         const historyLoading = ref(false)
         const actionBusy     = ref(null)
+        const historyPage    = ref(2)
 
-        const historyStats = computed(() => _computeStats(historyItems.value))
+        const historyStats   = computed(() => _computeStats(historyItems.value))
+        const visibleHistory = computed(() => historyItems.value.slice(0, historyPage.value))
+        const hasMoreHistory = computed(() => historyPage.value < historyItems.value.length)
+
+        function loadMoreHistory() { historyPage.value += 5 }
 
         async function doPost(url, body = {}) {
             return fetch(url, {
@@ -462,6 +479,7 @@ const ConnectorCard = {
 
         return {
             expanded, historyItems, historyLoading, actionBusy, historyStats,
+            visibleHistory, hasMoreHistory, loadMoreHistory,
             statusClass, statusLabel, statusIcon,
             actionBadgeClass, actionIcon, dotClass,
             testConn, pullConn, deleteConn, toggleHistory,
@@ -634,7 +652,7 @@ const ConnectorCard = {
       </div>
       <!-- Timeline -->
       <div class="cnt-timeline">
-        <div v-for="(e, idx) in historyItems" :key="e.timestamp+e.action+idx" class="cnt-timeline-item">
+        <div v-for="(e, idx) in visibleHistory" :key="e.timestamp+e.action+idx" class="cnt-timeline-item">
           <div class="cnt-timeline-dot" :class="'cnt-timeline-dot--'+dotClass(e.action)"></div>
           <div class="cnt-timeline-content">
             <div class="cnt-timeline-header">
@@ -649,7 +667,6 @@ const ConnectorCard = {
                 <i :class="e.extra.mode==='hard' ? 'fa-solid fa-bolt' : 'fa-solid fa-feather'" class="me-1"></i>[[ e.extra.mode ]]
               </span>
               <span title="Rules added"><i class="fa-solid fa-shield-halved me-1 text-primary"></i>+[[ e.extra.rules_added ]]</span>
-              <span v-if="e.extra.rules_updated" title="Rules updated"><i class="fa-solid fa-rotate me-1 text-warning"></i>~[[ e.extra.rules_updated ]]</span>
               <span v-if="e.extra.rules_skipped" title="Rules skipped"><i class="fa-solid fa-forward me-1 text-secondary"></i>=[[ e.extra.rules_skipped ]]</span>
               <span title="Bundles added"><i class="fa-solid fa-box me-1 text-secondary"></i>+[[ e.extra.bundles_added ]]</span>
               <span v-if="e.extra.rules_errors" title="Errors" class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i>[[ e.extra.rules_errors ]] err</span>
@@ -657,6 +674,13 @@ const ConnectorCard = {
             </div>
           </div>
         </div>
+      </div>
+      <!-- Show more -->
+      <div v-if="hasMoreHistory" class="text-center pt-2">
+        <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" style="font-size:.75rem;" @click="loadMoreHistory">
+          <i class="fa-solid fa-chevron-down me-1"></i>Show more
+          <span class="text-muted ms-1">([[ historyItems.length - visibleHistory.length ]] hidden)</span>
+        </button>
       </div>
     </template>
   </div>

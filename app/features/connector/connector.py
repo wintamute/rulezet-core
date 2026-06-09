@@ -1,12 +1,13 @@
 """
 connector.py — Blueprint for the Connector feature (UI routes).
 All DB logic lives in connector_core.py.
+Access is restricted to admin users only.
 """
 
 from urllib.parse import urlparse
 
-from flask import Blueprint, jsonify, render_template, request
-from flask_login import current_user, login_required
+from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
+from flask_login import current_user
 
 import app.features.connector.connector_core as ConnectorModel
 from app.core.utils.activity_log import log_activity
@@ -18,10 +19,17 @@ connector_blueprint = Blueprint(
 )
 
 
+@connector_blueprint.before_request
+def _require_admin():
+    if not current_user.is_authenticated:
+        return redirect(url_for('account.login'))
+    if not current_user.is_admin():
+        abort(403)
+
+
 # ─── List ─────────────────────────────────────────────────────────────────────
 
 @connector_blueprint.route('/list', methods=['GET'])
-@login_required
 def connector_list():
     return render_template('connector/connector_list.html')
 
@@ -39,7 +47,6 @@ def _is_self(instance_url: str) -> bool:
 
 
 @connector_blueprint.route('/get', methods=['GET'])
-@login_required
 def get_connectors():
     connectors = ConnectorModel.get_connectors(current_user.id)
     result = []
@@ -51,7 +58,6 @@ def get_connectors():
 
 
 @connector_blueprint.route('/create', methods=['POST'])
-@login_required
 def create_connector():
     data = request.get_json() or {}
     name         = (data.get('name') or '').strip()
@@ -78,9 +84,8 @@ def create_connector():
 
 
 @connector_blueprint.route('/update/<string:connector_uuid>', methods=['POST'])
-@login_required
 def update_connector(connector_uuid):
-    connector = ConnectorModel.get_connector_by_uuid(connector_uuid, owner_id=current_user.id)
+    connector = ConnectorModel.get_connector_by_uuid(connector_uuid)
     if not connector:
         return jsonify({'success': False, 'error': 'Not found.'}), 404
     if connector.is_system:
@@ -92,9 +97,8 @@ def update_connector(connector_uuid):
 
 
 @connector_blueprint.route('/delete/<string:connector_uuid>', methods=['POST'])
-@login_required
 def delete_connector(connector_uuid):
-    connector = ConnectorModel.get_connector_by_uuid(connector_uuid, owner_id=current_user.id)
+    connector = ConnectorModel.get_connector_by_uuid(connector_uuid)
     if not connector:
         return jsonify({'success': False, 'error': 'Not found.'}), 404
     if connector.is_system:
@@ -107,7 +111,6 @@ def delete_connector(connector_uuid):
 # ─── Actions ──────────────────────────────────────────────────────────────────
 
 @connector_blueprint.route('/test/<string:connector_uuid>', methods=['POST'])
-@login_required
 def test_connector(connector_uuid):
     connector = ConnectorModel.get_connector_by_uuid(connector_uuid)
     if not connector:
@@ -118,22 +121,15 @@ def test_connector(connector_uuid):
 
 
 @connector_blueprint.route('/history/<string:connector_uuid>', methods=['GET'])
-@login_required
 def connector_history(connector_uuid):
     connector = ConnectorModel.get_connector_by_uuid(connector_uuid)
     if not connector:
-        return jsonify({'success': False, 'error': 'Not found.'}), 404
-    if not connector.is_system and connector.owner_id != current_user.id:
         return jsonify({'success': False, 'error': 'Not found.'}), 404
     return jsonify(ConnectorModel.get_connector_history(connector)), 200
 
 
 @connector_blueprint.route('/pull/<string:connector_uuid>', methods=['POST'])
-@login_required
 def pull_connector(connector_uuid):
-    if not current_user.is_admin():
-        return jsonify({'success': False, 'error': 'Admin access required to trigger pulls.'}), 403
-
     connector = ConnectorModel.get_connector_by_uuid(connector_uuid)
     if not connector:
         return jsonify({'success': False, 'error': 'Not found.'}), 404
