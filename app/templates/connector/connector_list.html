@@ -26,12 +26,6 @@
       </p>
    </div>
 
-   <!-- ── Page-level alert (modal save feedback) ─────────── -->
-   <div v-if="alert.message" :class="`alert alert-${alert.type} alert-dismissible fade show`" role="alert">
-      [[ alert.message ]]
-      <button type="button" class="btn-close" @click="alert.message = ''"></button>
-   </div>
-
    <!-- ═══════════════════════════════════════════════════════
         SECTION 1 — Rulezet Instances
    ════════════════════════════════════════════════════════ -->
@@ -53,7 +47,7 @@
    <!-- ═══════════════════════════════════════════════════════
         SECTION 2 — Other Connectors
    ════════════════════════════════════════════════════════ -->
-   <div class="d-flex align-items-center gap-2 mb-3">
+   <!-- <div class="d-flex align-items-center gap-2 mb-3">
       <i class="fa-solid fa-network-wired text-secondary"></i>
       <h5 class="fw-bold mb-0">Other Connectors</h5>
       <span class="badge bg-secondary" style="font-size:.65rem;">Coming soon</span>
@@ -67,7 +61,7 @@
       @create="openCreate('other')"
       @edit="openEdit"
       class="mb-5">
-   </connector-table>
+   </connector-table> -->
 
 </div><!-- /container -->
 
@@ -172,6 +166,7 @@
 {% block script %}
 <script type="module">
 import ConnectorTable from '/static/js/connector/connectorTable.js'
+import { create_message } from '/static/js/toaster.js'
 
 const { createApp, ref, reactive, onMounted } = Vue
 
@@ -197,7 +192,6 @@ createApp({
       const otherTable   = ref(null)
 
       const saving    = ref(false)
-      const alert     = reactive({ message: '', type: 'success' })
       const editMode  = ref(false)
       const editUuid  = ref(null)
       const formError = ref('')
@@ -270,7 +264,7 @@ createApp({
             const data = await res.json()
             if (data.success) {
                bsModal?.hide()
-               showAlert(editMode.value ? 'Connector updated.' : 'Connector created.', 'success')
+               create_message(editMode.value ? 'Connector updated.' : 'Connector created.', 'success')
                rulezetTable.value?.refresh()
                otherTable.value?.refresh()
             } else {
@@ -280,16 +274,10 @@ createApp({
          finally { saving.value = false }
       }
 
-      function showAlert(msg, type = 'success') {
-         alert.message = msg
-         alert.type    = type
-         setTimeout(() => { alert.message = '' }, 6000)
-      }
-
       return {
          IS_ADMIN, CSRF, ICON_OPTIONS,
          rulezetTable, otherTable,
-         saving, alert, editMode, form, formError,
+         saving, editMode, form, formError,
          openCreate, openEdit, saveConnector,
       }
    }

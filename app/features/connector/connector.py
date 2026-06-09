@@ -3,6 +3,8 @@ connector.py — Blueprint for the Connector feature (UI routes).
 All DB logic lives in connector_core.py.
 """
 
+from urllib.parse import urlparse
+
 from flask import Blueprint, jsonify, render_template, request
 from flask_login import current_user, login_required
 
@@ -26,11 +28,26 @@ def connector_list():
 
 # ─── CRUD (JSON API used by the Vue app) ──────────────────────────────────────
 
+def _is_self(instance_url: str) -> bool:
+    """Return True if instance_url resolves to this very instance (same host AND port)."""
+    try:
+        remote_netloc = urlparse(instance_url).netloc.lower()
+        local_netloc  = request.host.lower()
+        return remote_netloc == local_netloc
+    except Exception:
+        return False
+
+
 @connector_blueprint.route('/get', methods=['GET'])
 @login_required
 def get_connectors():
     connectors = ConnectorModel.get_connectors(current_user.id)
-    return jsonify([c.to_json() for c in connectors]), 200
+    result = []
+    for c in connectors:
+        d = c.to_json()
+        d['is_self'] = _is_self(c.instance_url)
+        result.append(d)
+    return jsonify(result), 200
 
 
 @connector_blueprint.route('/create', methods=['POST'])
@@ -121,15 +138,24 @@ def pull_connector(connector_uuid):
     if not connector:
         return jsonify({'success': False, 'error': 'Not found.'}), 404
 
+    if _is_self(connector.instance_url):
+        return jsonify({'success': False, 'error': 'Cannot pull from this instance — that would sync with yourself.'}), 400
+
     if not connector.is_active:
         return jsonify({'success': False, 'error': 'Connector is disabled.'}), 400
 
-    job = ConnectorModel.trigger_pull(connector, triggered_by=current_user.id)
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode', 'soft')
+    if mode not in ('soft', 'hard'):
+        mode = 'soft'
+
+    job = ConnectorModel.trigger_pull(connector, triggered_by=current_user.id, mode=mode)
     if not job:
         return jsonify({'success': False, 'error': 'Could not queue pull job.'}), 500
 
     return jsonify({
         'success': True,
-        'message': 'Pull queued as background job.',
+        'message': f'Pull [{mode}] queued as background job.',
         'job_uuid': job.uuid,
+        'mode': mode,
     }), 200

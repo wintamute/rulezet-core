@@ -826,9 +826,13 @@ def handle_connector_pull(job, app):
     )
     from app.core.utils.activity_log import log_activity
 
+    import time as _time
+
     payload      = job.payload or {}
     connector_id = payload.get('connector_id')
+    mode         = payload.get('mode', 'soft')
     job_uuid     = job.uuid
+    t_start      = _time.monotonic()
 
     with app.app_context():
         from app.core.db_class.db import BackgroundJob as BJ
@@ -849,11 +853,14 @@ def handle_connector_pull(job, app):
         if connector.api_key_outbound:
             headers['X-API-KEY'] = connector.api_key_outbound
 
-        since    = connector.last_sync_at.isoformat() if connector.last_sync_at else '1970-01-01T00:00:00'
+        # soft pull always fetches all rules (no since filter) so skipped count is accurate
+        since    = '1970-01-01T00:00:00' if mode == 'soft' else (
+            connector.last_sync_at.isoformat() if connector.last_sync_at else '1970-01-01T00:00:00'
+        )
         base     = connector.instance_url.rstrip('/')
         PER_PAGE = 500
 
-        log_job(job, f"Starting pull from {base} (since {since[:10]})", level='info', event='started')
+        log_job(job, f"Starting {mode} pull from {base} (since {since[:10]})", level='info', event='started')
 
         # ── Pre-flight: fetch totals for progress bar ─────────────────────────
         total_rules_remote   = 0
@@ -875,12 +882,18 @@ def handle_connector_pull(job, app):
         job.total = max(1, total_rules_remote + total_bundles_remote)
         job.done  = 0
         db.session.commit()
-        log_job(job, f"Found {total_rules_remote} rule(s) and {total_bundles_remote} bundle(s) to sync.",
+        log_job(job,
+                f"Remote: {total_rules_remote} rule(s), {total_bundles_remote} bundle(s) available.",
                 level='info', event='progress')
 
-        rules_added   = 0
-        bundles_added = 0
-        had_error     = False
+        rules_created  = 0
+        rules_updated  = 0
+        rules_skipped  = 0
+        rules_errors   = 0
+        bundles_created = 0
+        bundles_updated = 0
+        bundles_skipped = 0
+        had_error       = False
 
         # ── Pull rules ────────────────────────────────────────────────────────
         if connector.sync_rules:
@@ -896,25 +909,37 @@ def handle_connector_pull(job, app):
                 try:
                     resp = http_requests.get(url, headers=headers, timeout=30)
                     if resp.status_code != 200:
-                        msg = f"Remote returned HTTP {resp.status_code} for rules."
+                        msg = f"Remote returned HTTP {resp.status_code} for rules page {page}."
                         log_job(job, msg, level='error', event='progress')
                         connector.last_error = msg
                         had_error = True
                         break
                     data  = resp.json()
                     items = data.get('rules', [])
+                    pg_created = pg_updated = pg_skipped = 0
                     for item in items:
-                        if _upsert_rule(connector, effective_user_id, item):
-                            rules_added += 1
-                        job.done = min(rules_added + bundles_added, job.total)
+                        try:
+                            result = _upsert_rule(connector, effective_user_id, item, mode=mode, triggered_by_id=job.created_by)
+                            if result == 'created':
+                                rules_created += 1; pg_created += 1
+                            elif result == 'updated':
+                                rules_updated += 1; pg_updated += 1
+                            elif result == 'skipped':
+                                rules_skipped += 1; pg_skipped += 1
+                        except Exception as item_exc:
+                            rules_errors += 1
+                            log_job(job, f"Error on rule '{item.get('title', '?')}': {item_exc}",
+                                    level='warning', event='progress')
+                        job.done = min(rules_created + rules_updated + bundles_created, job.total)
                     db.session.commit()
-                    log_job(job, f"Rules page {page}: {len(items)} received, {rules_added} imported.",
+                    log_job(job,
+                            f"Rules p.{page}: +{pg_created} new, ~{pg_updated} updated, ={pg_skipped} skipped.",
                             level='info', event='progress')
                     if not data.get('has_more', False):
                         break
                     page += 1
                 except Exception as exc:
-                    msg = f"Error fetching rules: {exc}"
+                    msg = f"Error fetching rules page {page}: {exc}"
                     log_job(job, msg, level='error', event='progress')
                     connector.last_error = msg
                     had_error = True
@@ -937,37 +962,62 @@ def handle_connector_pull(job, app):
                     data  = resp.json()
                     items = data.get('bundles', [])
                     for item in items:
-                        if _upsert_bundle(connector, effective_user_id, item):
-                            bundles_added += 1
-                        job.done = min(rules_added + bundles_added, job.total)
+                        result = _upsert_bundle(connector, effective_user_id, item, mode=mode, triggered_by_id=job.created_by)
+                        if result == 'created':
+                            bundles_created += 1
+                        elif result == 'updated':
+                            bundles_updated += 1
+                        elif result == 'skipped':
+                            bundles_skipped += 1
+                        job.done = min(rules_created + rules_updated + bundles_created, job.total)
                     db.session.commit()
                     if not data.get('has_more', False):
                         break
                     page += 1
                 except Exception as exc:
-                    log_job(job, f"Error fetching bundles: {exc}", level='error', event='progress')
+                    log_job(job, f"Error fetching bundles page {page}: {exc}",
+                            level='error', event='progress')
                     had_error = True
                     break
 
         # ── Finalize ──────────────────────────────────────────────────────────
-        now = datetime.datetime.now(datetime.timezone.utc)
-        # Only advance the sync cursor if the pull completed without errors
+        now       = datetime.datetime.now(datetime.timezone.utc)
+        duration  = round(_time.monotonic() - t_start, 1)
+
         if not had_error:
             connector.last_sync_at = now
             connector.is_verified  = True
-        connector.rules_synced   += rules_added
-        connector.bundles_synced += bundles_added
-        job.done  = 1
+        connector.rules_synced   += rules_created + rules_updated
+        connector.bundles_synced += bundles_created + bundles_updated
+        job.done   = job.total
         job.status = 'done'
         db.session.commit()
 
-        summary = f"Pull complete: {rules_added} rule(s), {bundles_added} bundle(s) imported."
+        summary = (
+            f"Pull [{mode}] done in {duration}s — "
+            f"rules: +{rules_created} new, ~{rules_updated} updated, "
+            f"={rules_skipped} skipped, {rules_errors} errors | "
+            f"bundles: +{bundles_created} new, ~{bundles_updated} updated, ={bundles_skipped} skipped."
+        )
         log_job(job, summary, level='success', event='done')
         log_activity('connector.pull_done',
                      f"Connector '{connector.name}': {summary}",
                      target_type='connector', target_id=connector.id,
                      target_uuid=connector.uuid,
-                     extra={'rules_added': rules_added, 'bundles_added': bundles_added})
+                     extra={
+                         'mode':             mode,
+                         'rules_added':      rules_created,
+                         'rules_updated':    rules_updated,
+                         'rules_skipped':    rules_skipped,
+                         'rules_errors':     rules_errors,
+                         'bundles_added':    bundles_created,
+                         'bundles_updated':  bundles_updated,
+                         'bundles_skipped':  bundles_skipped,
+                         'remote_rules':     total_rules_remote,
+                         'remote_bundles':   total_bundles_remote,
+                         'had_error':        had_error,
+                         'duration_s':       duration,
+                     })
 
 
 # ─── Package management ───────────────────────────────────────────────────────

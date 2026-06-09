@@ -15,6 +15,7 @@
  */
 
 import PaginationComponent from '/static/js/rule/paginationComponent.js'
+import { create_message } from '/static/js/toaster.js'
 
 const { ref, reactive, computed, onMounted } = Vue
 
@@ -69,12 +70,14 @@ function dotClass(action) {
     return 'neutral'
 }
 function _computeStats(items) {
-    const pulls        = items.filter(e => e.action?.includes('pull_done')).length
-    const tests        = items.filter(e => e.action?.includes('test')).length
-    const errors       = items.filter(e => e.action?.includes('error')).length
-    const rulesAdded   = items.reduce((s, e) => s + (e.extra?.rules_added   || 0), 0)
-    const bundlesAdded = items.reduce((s, e) => s + (e.extra?.bundles_added || 0), 0)
-    const lastSync     = items.length ? items[0].timestamp : null
+    const pulls         = items.filter(e => e.action?.includes('pull_done')).length
+    const tests         = items.filter(e => e.action?.includes('test')).length
+    const errors        = items.filter(e => e.action?.includes('error')).length
+    const rulesAdded    = items.reduce((s, e) => s + (e.extra?.rules_added    || 0), 0)
+    const rulesUpdated  = items.reduce((s, e) => s + (e.extra?.rules_updated  || 0), 0)
+    const rulesSkipped  = items.reduce((s, e) => s + (e.extra?.rules_skipped  || 0), 0)
+    const bundlesAdded  = items.reduce((s, e) => s + (e.extra?.bundles_added  || 0), 0)
+    const lastSync      = items.length ? items[0].timestamp : null
 
     const dayCounts = {}
     items.forEach(e => {
@@ -88,7 +91,7 @@ function _computeStats(items) {
         sparkline.push(dayCounts[d.toISOString().split('T')[0]] || 0)
     }
     const maxCount = Math.max(...sparkline, 1)
-    return { pulls, tests, errors, rulesAdded, bundlesAdded, lastSync, sparkline, maxCount }
+    return { pulls, tests, errors, rulesAdded, rulesUpdated, rulesSkipped, bundlesAdded, lastSync, sparkline, maxCount }
 }
 
 // ─── ConnectorRow (table expanded detail) ─────────────────────────────────────
@@ -101,7 +104,7 @@ const ConnectorRow = {
         csrfToken: { type: String,  required: true },
         selected:  { type: Boolean, default: false },
     },
-    emits: ['toggle-select', 'edit', 'deleted', 'alert'],
+    emits: ['toggle-select', 'edit', 'deleted'],
     setup(props, { emit }) {
         const expanded       = ref(false)
         const historyLoaded  = ref(false)
@@ -111,11 +114,11 @@ const ConnectorRow = {
 
         const historyStats = computed(() => _computeStats(historyItems.value))
 
-        async function doPost(url) {
+        async function doPost(url, body = {}) {
             return fetch(url, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken },
-                body:    JSON.stringify({}),
+                body:    JSON.stringify(body),
             })
         }
 
@@ -128,16 +131,21 @@ const ConnectorRow = {
                     if (data.stats.rules   != null) props.c.rules_count   = data.stats.rules
                     if (data.stats.bundles != null) props.c.bundles_count = data.stats.bundles
                 }
-                emit('alert', { msg: data.message || (data.success ? 'OK' : 'Failed'), type: data.success ? 'success' : 'danger' })
+                create_message(data.message || (data.success ? 'OK' : 'Failed'), data.success ? 'success' : 'danger')
             } finally { actionBusy.value = null }
         }
 
-        async function pullConn() {
+        async function pullConn(mode = 'soft') {
+            if (props.c.is_self) {
+                create_message('Cannot pull from this instance — self-sync not allowed.', 'warning')
+                return
+            }
             actionBusy.value = 'pull'
             try {
-                const r    = await doPost(`/connector/pull/${props.c.uuid}`)
+                const r    = await doPost(`/connector/pull/${props.c.uuid}`, { mode })
                 const data = await r.json()
-                emit('alert', { msg: data.success ? 'Pull job queued.' : (data.error || 'Error'), type: data.success ? 'success' : 'danger' })
+                const label = mode === 'hard' ? 'Hard' : 'Soft'
+                create_message(data.success ? `${label} pull queued.` : (data.error || 'Error'), data.success ? 'success' : 'danger')
             } finally { actionBusy.value = null }
         }
 
@@ -146,10 +154,10 @@ const ConnectorRow = {
             const r    = await doPost(`/connector/delete/${props.c.uuid}`)
             const data = await r.json()
             if (data.success) {
-                emit('alert', { msg: 'Connector deleted.', type: 'success' })
+                create_message('Connector deleted.', 'success')
                 emit('deleted')
             } else {
-                emit('alert', { msg: data.error || 'Delete failed.', type: 'danger' })
+                create_message(data.error || 'Delete failed.', 'danger')
             }
         }
 
@@ -190,6 +198,7 @@ const ConnectorRow = {
           <div class="fw-semibold d-flex align-items-center gap-1" style="font-size:.88rem;">
             [[ c.name ]]
             <i v-if="c.is_system" class="fa-solid fa-lock text-muted" style="font-size:.65rem;" title="System — read only"></i>
+            <span v-if="c.is_self" class="badge bg-warning text-dark" style="font-size:.58rem;" title="This is the current instance — pull disabled."><i class="fa-solid fa-house me-1"></i>self</span>
           </div>
           <div style="font-size:.72rem;color:var(--subtle-text-color);">[[ c.instance_url ]]</div>
         </div>
@@ -226,10 +235,34 @@ const ConnectorRow = {
           <span v-if="actionBusy==='test'" class="spinner-border spinner-border-sm"></span>
           <i v-else class="fa-solid fa-wifi"></i>
         </button>
-        <button v-if="c.is_active && isAdmin" class="cnt-btn cnt-btn--success" title="Pull" @click="pullConn" :disabled="actionBusy==='pull'">
-          <span v-if="actionBusy==='pull'" class="spinner-border spinner-border-sm"></span>
-          <i v-else class="fa-solid fa-cloud-arrow-down"></i>
-        </button>
+        <template v-if="c.is_active && isAdmin">
+          <div v-if="c.is_self" class="cnt-btn" title="Cannot pull from this instance (self)" style="opacity:.4;cursor:not-allowed;">
+            <i class="fa-solid fa-cloud-arrow-down"></i>
+          </div>
+          <div v-else class="dropdown">
+            <button class="cnt-btn cnt-btn--success" :disabled="actionBusy==='pull'"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+              <span v-if="actionBusy==='pull'" class="spinner-border spinner-border-sm"></span>
+              <i v-else class="fa-solid fa-cloud-arrow-down"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px;font-size:.82rem;">
+              <li>
+                <button class="dropdown-item" @click="pullConn('soft')">
+                  <i class="fa-solid fa-feather me-2 text-success"></i>
+                  <strong>Soft pull</strong>
+                  <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Add new only — skip existing</div>
+                </button>
+              </li>
+              <li>
+                <button class="dropdown-item" @click="pullConn('hard')">
+                  <i class="fa-solid fa-bolt me-2 text-warning"></i>
+                  <strong>Hard pull</strong>
+                  <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Add new + overwrite if remote is newer</div>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </template>
         <button v-if="!c.is_system" class="cnt-btn cnt-btn--danger" title="Delete" @click="deleteConn">
           <i class="fa-solid fa-trash"></i>
         </button>
@@ -327,8 +360,15 @@ const ConnectorRow = {
               </div>
               <div class="cnt-timeline-desc">[[ e.description ]]</div>
               <div v-if="e.extra && e.extra.rules_added !== undefined" class="cnt-timeline-meta">
-                <span><i class="fa-solid fa-shield-halved me-1 text-primary"></i>+[[ e.extra.rules_added ]] rules</span>
-                <span><i class="fa-solid fa-box me-1 text-secondary"></i>+[[ e.extra.bundles_added ]] bundles</span>
+                <span v-if="e.extra.mode" :class="['badge', 'me-1', e.extra.mode==='hard' ? 'bg-warning text-dark' : 'bg-success']" style="font-size:.58rem;">
+                  <i :class="e.extra.mode==='hard' ? 'fa-solid fa-bolt' : 'fa-solid fa-feather'" class="me-1"></i>[[ e.extra.mode ]]
+                </span>
+                <span title="Rules added"><i class="fa-solid fa-shield-halved me-1 text-primary"></i>+[[ e.extra.rules_added ]]</span>
+                <span v-if="e.extra.rules_updated" title="Rules updated"><i class="fa-solid fa-rotate me-1 text-warning"></i>~[[ e.extra.rules_updated ]]</span>
+                <span v-if="e.extra.rules_skipped" title="Rules skipped"><i class="fa-solid fa-forward me-1 text-secondary"></i>=[[ e.extra.rules_skipped ]]</span>
+                <span title="Bundles added"><i class="fa-solid fa-box me-1 text-secondary"></i>+[[ e.extra.bundles_added ]]</span>
+                <span v-if="e.extra.rules_errors" title="Errors" class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i>[[ e.extra.rules_errors ]] err</span>
+                <span v-if="e.extra.duration_s" title="Duration" class="text-muted"><i class="fa-solid fa-stopwatch me-1"></i>[[ e.extra.duration_s ]]s</span>
               </div>
             </div>
           </div>
@@ -350,7 +390,7 @@ const ConnectorCard = {
         csrfToken: { type: String,  required: true },
         selected:  { type: Boolean, default: false },
     },
-    emits: ['toggle-select', 'edit', 'deleted', 'alert'],
+    emits: ['toggle-select', 'edit', 'deleted'],
     setup(props, { emit }) {
         const expanded       = ref(false)
         const historyLoaded  = ref(false)
@@ -360,11 +400,11 @@ const ConnectorCard = {
 
         const historyStats = computed(() => _computeStats(historyItems.value))
 
-        async function doPost(url) {
+        async function doPost(url, body = {}) {
             return fetch(url, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken },
-                body:    JSON.stringify({}),
+                body:    JSON.stringify(body),
             })
         }
 
@@ -377,16 +417,21 @@ const ConnectorCard = {
                     if (data.stats.rules   != null) props.c.rules_count   = data.stats.rules
                     if (data.stats.bundles != null) props.c.bundles_count = data.stats.bundles
                 }
-                emit('alert', { msg: data.message || (data.success ? 'OK' : 'Failed'), type: data.success ? 'success' : 'danger' })
+                create_message(data.message || (data.success ? 'OK' : 'Failed'), data.success ? 'success' : 'danger')
             } finally { actionBusy.value = null }
         }
 
-        async function pullConn() {
+        async function pullConn(mode = 'soft') {
+            if (props.c.is_self) {
+                create_message('Cannot pull from this instance — self-sync not allowed.', 'warning')
+                return
+            }
             actionBusy.value = 'pull'
             try {
-                const r    = await doPost(`/connector/pull/${props.c.uuid}`)
+                const r    = await doPost(`/connector/pull/${props.c.uuid}`, { mode })
                 const data = await r.json()
-                emit('alert', { msg: data.success ? 'Pull job queued.' : (data.error || 'Error'), type: data.success ? 'success' : 'danger' })
+                const label = mode === 'hard' ? 'Hard' : 'Soft'
+                create_message(data.success ? `${label} pull queued.` : (data.error || 'Error'), data.success ? 'success' : 'danger')
             } finally { actionBusy.value = null }
         }
 
@@ -395,10 +440,10 @@ const ConnectorCard = {
             const r    = await doPost(`/connector/delete/${props.c.uuid}`)
             const data = await r.json()
             if (data.success) {
-                emit('alert', { msg: 'Connector deleted.', type: 'success' })
+                create_message('Connector deleted.', 'success')
                 emit('deleted')
             } else {
-                emit('alert', { msg: data.error || 'Delete failed.', type: 'danger' })
+                create_message(data.error || 'Delete failed.', 'danger')
             }
         }
 
@@ -440,6 +485,7 @@ const ConnectorCard = {
         <p class="connector-card__name">
           [[ c.name ]]
           <i v-if="c.is_system" class="fa-solid fa-lock text-muted ms-1" style="font-size:.65rem;"></i>
+          <span v-if="c.is_self" class="badge bg-warning text-dark ms-1" style="font-size:.58rem;" title="This is the current instance — pull disabled."><i class="fa-solid fa-house me-1"></i>self</span>
         </p>
         <span :class="['connector-status', statusClass(c)]">
           <i :class="statusIcon(c)"></i> [[ statusLabel(c) ]]
@@ -490,10 +536,35 @@ const ConnectorCard = {
       <span v-if="actionBusy==='test'" class="spinner-border spinner-border-sm me-1"></span>
       <i v-else class="fa-solid fa-wifi me-1"></i>Test
     </button>
-    <button v-if="c.is_active && isAdmin" class="btn btn-sm btn-outline-success rounded-pill" @click="pullConn" :disabled="actionBusy==='pull'">
-      <span v-if="actionBusy==='pull'" class="spinner-border spinner-border-sm me-1"></span>
-      <i v-else class="fa-solid fa-cloud-arrow-down me-1"></i>Pull
-    </button>
+    <template v-if="c.is_active && isAdmin">
+      <button v-if="c.is_self" class="btn btn-sm btn-outline-secondary rounded-pill" disabled title="Cannot pull from this instance (self)">
+        <i class="fa-solid fa-cloud-arrow-down me-1"></i>Pull
+      </button>
+      <div v-else class="dropdown">
+        <button class="btn btn-sm btn-outline-success rounded-pill"
+                :disabled="actionBusy==='pull'"
+                data-bs-toggle="dropdown" aria-expanded="false">
+          <span v-if="actionBusy==='pull'" class="spinner-border spinner-border-sm me-1"></span>
+          <i v-else class="fa-solid fa-cloud-arrow-down me-1"></i>Pull
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px;font-size:.82rem;">
+          <li>
+            <button class="dropdown-item" @click="pullConn('soft')">
+              <i class="fa-solid fa-feather me-2 text-success"></i>
+              <strong>Soft pull</strong>
+              <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Add new only — skip existing</div>
+            </button>
+          </li>
+          <li>
+            <button class="dropdown-item" @click="pullConn('hard')">
+              <i class="fa-solid fa-bolt me-2 text-warning"></i>
+              <strong>Hard pull</strong>
+              <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Add new + overwrite if remote is newer</div>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </template>
     <button class="btn btn-sm btn-outline-secondary rounded-pill" @click="toggleHistory">
       <i :class="['fa-solid', expanded ? 'fa-chevron-up' : 'fa-clock-rotate-left', 'me-1']"></i>History
     </button>
@@ -574,8 +645,15 @@ const ConnectorCard = {
             </div>
             <div class="cnt-timeline-desc">[[ e.description ]]</div>
             <div v-if="e.extra && e.extra.rules_added !== undefined" class="cnt-timeline-meta">
-              <span><i class="fa-solid fa-shield-halved me-1 text-primary"></i>+[[ e.extra.rules_added ]] rules</span>
-              <span><i class="fa-solid fa-box me-1 text-secondary"></i>+[[ e.extra.bundles_added ]] bundles</span>
+              <span v-if="e.extra.mode" :class="['badge', 'me-1', e.extra.mode==='hard' ? 'bg-warning text-dark' : 'bg-success']" style="font-size:.58rem;">
+                <i :class="e.extra.mode==='hard' ? 'fa-solid fa-bolt' : 'fa-solid fa-feather'" class="me-1"></i>[[ e.extra.mode ]]
+              </span>
+              <span title="Rules added"><i class="fa-solid fa-shield-halved me-1 text-primary"></i>+[[ e.extra.rules_added ]]</span>
+              <span v-if="e.extra.rules_updated" title="Rules updated"><i class="fa-solid fa-rotate me-1 text-warning"></i>~[[ e.extra.rules_updated ]]</span>
+              <span v-if="e.extra.rules_skipped" title="Rules skipped"><i class="fa-solid fa-forward me-1 text-secondary"></i>=[[ e.extra.rules_skipped ]]</span>
+              <span title="Bundles added"><i class="fa-solid fa-box me-1 text-secondary"></i>+[[ e.extra.bundles_added ]]</span>
+              <span v-if="e.extra.rules_errors" title="Errors" class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i>[[ e.extra.rules_errors ]] err</span>
+              <span v-if="e.extra.duration_s" title="Duration" class="text-muted"><i class="fa-solid fa-stopwatch me-1"></i>[[ e.extra.duration_s ]]s</span>
             </div>
           </div>
         </div>
@@ -608,7 +686,6 @@ export default {
     setup(props, { emit }) {
         const allConnectors = ref([])
         const loading       = ref(true)
-        const alert         = reactive({ msg: '', type: 'success' })
 
         // View / search / pagination
         const viewMode  = ref('table')  // 'table' | 'card'
@@ -659,7 +736,7 @@ export default {
                 const r = await fetch('/connector/get')
                 allConnectors.value = await r.json()
                 emit('count', filtered.value.length)
-            } catch { showAlert('Failed to load connectors.', 'danger') }
+            } catch { create_message('Failed to load connectors.', 'danger') }
             finally { loading.value = false }
         }
 
@@ -702,28 +779,30 @@ export default {
                     if (d.success) ok++
                 } catch {}
             }
-            showAlert(`Tested ${uuids.length} connector(s): ${ok} OK.`, 'info')
+            create_message(`Tested ${uuids.length} connector(s): ${ok} OK.`, 'info')
             await refresh()
             bulkBusy.value = false
         }
 
-        async function bulkPull() {
+        async function bulkPull(mode = 'soft') {
             if (!props.isAdmin) return
             bulkBusy.value = true
-            const uuids = [...selectedUuids]
+            const connectors = paginated.value.filter(c => selectedUuids.has(c.uuid) && !c.is_self)
             let queued = 0
-            for (const uuid of uuids) {
+            for (const c of connectors) {
                 try {
-                    const r = await fetch(`/connector/pull/${uuid}`, {
+                    const r = await fetch(`/connector/pull/${c.uuid}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken },
-                        body: '{}',
+                        body: JSON.stringify({ mode }),
                     })
                     const d = await r.json()
                     if (d.success) queued++
                 } catch {}
             }
-            showAlert(`${queued} pull job(s) queued.`, 'success')
+            const skipped = selectedUuids.size - connectors.length
+            const note = skipped > 0 ? ` (${skipped} skipped — self)` : ''
+            create_message(`${queued} pull job(s) queued [${mode}]${note}.`, 'success')
             clearSelection()
             bulkBusy.value = false
         }
@@ -741,23 +820,16 @@ export default {
                     })
                 } catch {}
             }
-            showAlert(`${uuids.length} connector(s) deleted.`, 'success')
+            create_message(`${uuids.length} connector(s) deleted.`, 'success')
             clearSelection()
             await refresh()
             bulkBusy.value = false
         }
 
-        // ── Alert ─────────────────────────────────────────────────────────
-        function showAlert(msg, type = 'success') {
-            alert.msg  = msg
-            alert.type = type
-            setTimeout(() => { alert.msg = '' }, 5000)
-        }
-
         onMounted(refresh)
 
         return {
-            allConnectors, loading, alert,
+            allConnectors, loading,
             viewMode, search, page, perPage, totalPages,
             filtered, paginated,
             selectedUuids, allPageSelected, somePageSelected, selectableOnPage,
@@ -765,18 +837,11 @@ export default {
             refresh, onSearch,
             toggleSelect, togglePageAll, clearSelection,
             bulkTest, bulkPull, bulkDelete,
-            showAlert,
         }
     },
 
     template: `
 <div class="cnt-wrapper">
-
-  <!-- Alert -->
-  <div v-if="alert.msg" :class="['alert', 'alert-'+alert.type, 'alert-dismissible', 'fade', 'show', 'mb-3']">
-    [[ alert.msg ]]
-    <button type="button" class="btn-close" @click="alert.msg = ''"></button>
-  </div>
 
   <!-- Toolbar -->
   <div class="cnt-toolbar">
@@ -850,8 +915,7 @@ export default {
           :selected="selectedUuids.has(c.uuid)"
           @toggle-select="toggleSelect"
           @edit="$emit('edit', $event)"
-          @deleted="refresh"
-          @alert="showAlert($event.msg, $event.type)">
+          @deleted="refresh">
         </connector-row>
       </table>
     </div>
@@ -864,8 +928,7 @@ export default {
           :selected="selectedUuids.has(c.uuid)"
           @toggle-select="toggleSelect"
           @edit="$emit('edit', $event)"
-          @deleted="refresh"
-          @alert="showAlert($event.msg, $event.type)">
+          @deleted="refresh">
         </connector-card>
       </div>
     </div>
@@ -895,9 +958,19 @@ export default {
         <button class="cnt-bulk-btn" @click="bulkTest" :disabled="bulkBusy">
           <i class="fa-solid fa-wifi me-1"></i>Test all
         </button>
-        <button v-if="isAdmin" class="cnt-bulk-btn cnt-bulk-btn--success" @click="bulkPull" :disabled="bulkBusy">
-          <i class="fa-solid fa-cloud-arrow-down me-1"></i>Pull all
-        </button>
+        <div v-if="isAdmin" class="btn-group">
+          <button class="cnt-bulk-btn cnt-bulk-btn--success" @click="bulkPull('soft')" :disabled="bulkBusy">
+            <i class="fa-solid fa-cloud-arrow-down me-1"></i>Pull all
+          </button>
+          <button class="cnt-bulk-btn cnt-bulk-btn--success" style="padding:0 6px;border-left:1px solid rgba(255,255,255,.25);"
+                  :disabled="bulkBusy" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fa-solid fa-chevron-down" style="font-size:.6rem;"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" style="min-width:180px;font-size:.82rem;">
+            <li><button class="dropdown-item" @click="bulkPull('soft')"><i class="fa-solid fa-feather me-2 text-success"></i>Soft pull all</button></li>
+            <li><button class="dropdown-item" @click="bulkPull('hard')"><i class="fa-solid fa-bolt me-2 text-warning"></i>Hard pull all</button></li>
+          </ul>
+        </div>
         <button class="cnt-bulk-btn cnt-bulk-btn--danger" @click="bulkDelete" :disabled="bulkBusy">
           <i class="fa-solid fa-trash me-1"></i>Delete
         </button>

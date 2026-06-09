@@ -11,7 +11,7 @@ import datetime
 from flask import request
 from flask_restx import Namespace, Resource
 
-from app.core.db_class.db import Rule, Bundle, Tag, RuleTagAssociation
+from app.core.db_class.db import Rule, Bundle, Tag, RuleTagAssociation, RuleUpdateHistory
 
 sync_ns = Namespace(
     "Sync 🔗",
@@ -34,19 +34,33 @@ def _rule_to_sync_json(rule: Rule) -> dict:
     tags = [a.tag.name for a in
             RuleTagAssociation.query.filter_by(rule_id=rule.id).all()
             if a.tag]
+    history = [
+        {
+            'old_content':   h.old_content,
+            'new_content':   h.new_content,
+            'message':       h.message,
+            'success':       h.success,
+            'analyzed_at':   h.analyzed_at.isoformat() if h.analyzed_at else None,
+            'manuel_submit': h.manuel_submit or False,
+        }
+        for h in (rule.rule_update_history
+                  .order_by(RuleUpdateHistory.analyzed_at.asc())
+                  .all())
+    ]
     return {
-        'uuid':        rule.uuid,
-        'format':      rule.format,
-        'title':       rule.title,
-        'description': rule.description,
-        'to_string':   rule.to_string,
-        'author':      rule.author,
-        'version':     rule.version,
-        'license':     rule.license,
-        'source':      rule.source,
-        'tags':        tags,
-        'last_modif':  rule.last_modif.isoformat() if rule.last_modif else None,
-        'created_at':  rule.creation_date.isoformat() if rule.creation_date else None,
+        'uuid':           rule.uuid,
+        'format':         rule.format,
+        'title':          rule.title,
+        'description':    rule.description,
+        'to_string':      rule.to_string,
+        'author':         rule.author,
+        'version':        rule.version,
+        'license':        rule.license,
+        'source':         rule.source,
+        'tags':           tags,
+        'last_modif':     rule.last_modif.isoformat() if rule.last_modif else None,
+        'created_at':     rule.creation_date.isoformat() if rule.creation_date else None,
+        'update_history': history,
     }
 
 

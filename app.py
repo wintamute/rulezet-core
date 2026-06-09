@@ -27,7 +27,8 @@ os.environ.setdefault('FLASKENV', 'development')
 
 load_dotenv()
 
-app = create_app()
+_cli_mode = args.init_db or args.recreate_db or args.delete_db
+app = create_app(start_worker=not _cli_mode)
 
 @app.errorhandler(404)
 def error_page_not_found(e):

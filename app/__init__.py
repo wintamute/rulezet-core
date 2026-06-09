@@ -20,7 +20,7 @@ sess = Session()
 ThreadLocalSession = None
 mail = Mail()
 
-def create_app():
+def create_app(start_worker=True):
     load_dotenv()
 
     app = Flask(__name__)
@@ -67,8 +67,9 @@ def create_app():
 
 
     from app.features.jobs import job_handlers  # noqa
-    from app.features.jobs.job_worker import start_worker
-    start_worker(app)
+    if start_worker:
+        from app.features.jobs.job_worker import start_worker as _start_worker
+        _start_worker(app)
 
     with app.app_context():
         try:
