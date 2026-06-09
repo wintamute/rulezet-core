@@ -156,6 +156,10 @@ class Rule(db.Model):
     deleted_by_id     = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     delete_batch_uuid = db.Column(db.String(36), nullable=True, index=True)
 
+    # Connector origin — set when a rule is imported via a connector
+    connector_id      = db.Column(db.Integer, db.ForeignKey('connector.id', ondelete='SET NULL'), nullable=True, index=True)
+    remote_rule_uuid  = db.Column(db.String(36), nullable=True, index=True)  # UUID on the remote instance
+
     #edit
     def get_rule_user_first_name_by_id(self):
         user = User.query.get(self.user_id)  
@@ -855,6 +859,10 @@ class Bundle(db.Model):
     access = db.Column(db.Boolean, nullable=False, default=True) # if true all user can see the bundle, if false only the creator can see it
 
     vulnerability_identifiers = db.Column(db.Text, nullable=True) # JSON string of vulnerability identifiers associated with the bundle
+
+    # Connector origin
+    connector_id        = db.Column(db.Integer, db.ForeignKey('connector.id', ondelete='SET NULL'), nullable=True, index=True)
+    remote_bundle_uuid  = db.Column(db.String(36), nullable=True, index=True)
 
     user = db.relationship('User', backref=db.backref('user who create bundle', lazy='dynamic', cascade='all, delete-orphan'))
 
@@ -1752,6 +1760,31 @@ class ActivityLog(db.Model):
             "icon":        self.icon,
             "created_at":  self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
         }
+    
+    def to_json_public(self):
+        username = "System"
+        try:
+            if self.user:
+                username = self.user.get_username()
+        except Exception:
+            pass
+        return {
+            "id":          self.id,
+            "uuid":        self.uuid,
+            "user_id":     self.user_id,
+            "username":    username,
+            "action":      self.action,
+            "description": self.description,
+            "url":         self.url,
+            "method":      self.method,
+            "target_type": self.target_type,
+            "target_id":   self.target_id,
+            "target_uuid": self.target_uuid,
+            "extra":       self.extra,
+            "is_public":   self.is_public,
+            "icon":        self.icon,
+            "created_at":  self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        }
 
 
 class RuleScope(db.Model):
@@ -1761,7 +1794,7 @@ class RuleScope(db.Model):
     id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
     uuid       = db.Column(db.String(36), unique=True, nullable=False, index=True)
     rule_id    = db.Column(db.Integer, db.ForeignKey('rule.id', ondelete='CASCADE'), nullable=False, index=True)
-    user_id    = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id',  ondelete='CASCADE'), nullable=False)
 
     works      = db.Column(db.Boolean, nullable=False, default=True)   # True = "works for me"
     entries    = db.Column(db.JSON,    nullable=False, default=list)    # [{"key": "os", "value": "linux"}, …]
@@ -1789,4 +1822,98 @@ class RuleScope(db.Model):
             'comment':    self.comment or '',
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None,
             'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M') if self.updated_at else None,
+        }
+
+
+####################
+#    Connector     #
+####################
+
+class Connector(db.Model):
+    """
+    Generic connector between this Rulezet instance and any external source.
+
+    The connector_type field determines the protocol adapter to use.
+    Currently implemented: 'rulezet'.
+    Planned: 'misp', 'opencti', 'github_advisory', …
+
+    Every user can create their own connectors — this is not admin-only.
+    A shadow_user is auto-created when the connector is first saved so that
+    imported content always has a valid local user_id without breaking the
+    ownership model.
+    """
+    __tablename__ = 'connector'
+
+    id          = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    uuid        = db.Column(db.String(36), unique=True, nullable=False, index=True)
+
+    # Human-readable identity
+    name        = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    icon        = db.Column(db.String(64), nullable=True)   # FontAwesome class e.g. 'fa-solid fa-plug'
+
+    # Protocol adapter — keep extensible
+    connector_type = db.Column(db.String(64), nullable=False, default='rulezet', index=True)
+
+    # Remote connection
+    instance_url     = db.Column(db.String(512), nullable=False)
+    api_key_outbound = db.Column(db.String(512), nullable=True)   # key used to auth TO the remote
+
+    # Ownership: per user (not admin-only)
+    owner_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    shadow_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    # What to sync
+    sync_rules   = db.Column(db.Boolean, nullable=False, default=True)
+    sync_bundles = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Who owns imported content: 'shadow' = ghost user | 'self' = connector owner
+    owner_mode = db.Column(db.String(16), nullable=False, default='shadow')
+
+    # System connectors (e.g. official Rulezet) are read-only and visible to all users
+    is_system = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+    # Status
+    is_active   = db.Column(db.Boolean, nullable=False, default=True)
+    is_verified = db.Column(db.Boolean, nullable=False, default=False)  # True after first successful pull
+    last_error  = db.Column(db.Text, nullable=True)
+
+    # Sync tracking
+    last_sync_at    = db.Column(db.DateTime, nullable=True)
+    rules_synced    = db.Column(db.Integer, nullable=False, default=0)
+    bundles_synced  = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at = db.Column(db.DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc),
+                           onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+    owner       = db.relationship('User', foreign_keys=[owner_id],
+                                  backref=db.backref('connectors', lazy='dynamic'))
+    shadow_user = db.relationship('User', foreign_keys=[shadow_user_id])
+
+    def to_json(self):
+        rules_count   = Rule.query.filter_by(connector_id=self.id, is_deleted=False).count()
+        bundles_count = Bundle.query.filter_by(connector_id=self.id).count()
+        return {
+            'id':             self.id,
+            'uuid':           self.uuid,
+            'name':           self.name,
+            'description':    self.description or '',
+            'icon':           self.icon or 'fa-solid fa-plug',
+            'connector_type': self.connector_type,
+            'instance_url':   self.instance_url,
+            'sync_rules':     self.sync_rules,
+            'sync_bundles':   self.sync_bundles,
+            'owner_mode':     self.owner_mode,
+            'is_system':      self.is_system,
+            'is_active':      self.is_active,
+            'is_verified':    self.is_verified,
+            'last_error':     self.last_error,
+            'last_sync_at':   self.last_sync_at.strftime('%Y-%m-%d %H:%M') if self.last_sync_at else None,
+            'rules_count':    rules_count,
+            'bundles_count':  bundles_count,
+            'rules_synced':   self.rules_synced,
+            'bundles_synced': self.bundles_synced,
+            'owner_id':       self.owner_id,
+            'created_at':     self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None,
         }

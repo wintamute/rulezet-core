@@ -25,7 +25,8 @@ class Config:
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = "postgresql:///rulezet"
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'postgresql:///rulezet')
+    SESSION_COOKIE_NAME = os.environ.get('SESSION_COOKIE_NAME', 'session')
 
     
 

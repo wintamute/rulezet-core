@@ -49,8 +49,7 @@ def create_app():
     from .features.bundle.bundle import bundle_blueprint
     from .features.tags.tags import tags_blueprint
     from app.features.jobs.jobs import jobs_blueprint
-
-
+    from app.features.connector.connector import connector_blueprint
 
     app.register_blueprint(home_blueprint, url_prefix="/")
     app.register_blueprint(account_blueprint, url_prefix="/account")
@@ -58,6 +57,7 @@ def create_app():
     app.register_blueprint(bundle_blueprint, url_prefix="/bundle")
     app.register_blueprint(tags_blueprint, url_prefix="/tags")
     app.register_blueprint(jobs_blueprint, url_prefix='/jobs')
+    app.register_blueprint(connector_blueprint, url_prefix='/connector')
 
     from app.api.api import api_blueprint
 
@@ -69,6 +69,13 @@ def create_app():
     from app.features.jobs import job_handlers  # noqa
     from app.features.jobs.job_worker import start_worker
     start_worker(app)
+
+    with app.app_context():
+        try:
+            from app.features.connector.connector_core import seed_official_connector
+            seed_official_connector()
+        except Exception:
+            pass
 
     _version_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'version')
     try:

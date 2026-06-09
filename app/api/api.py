@@ -102,3 +102,7 @@ api.add_namespace(bundle_private_ns, path="/bundle/private")
 # Account API
 api.add_namespace(account_public_ns,  path="/account/public")
 api.add_namespace(account_private_ns, path="/account/private")
+
+# Sync / Federation API
+from .connector.connector_sync_api import sync_ns  # noqa
+api.add_namespace(sync_ns, path="/sync")

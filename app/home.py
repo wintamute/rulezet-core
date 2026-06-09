@@ -558,7 +558,7 @@ def activity_feed():
     visible = [l for l in candidates if _is_accessible(l)][:per_page]
 
     return jsonify({
-        "logs":        [l.to_json() for l in visible],
+        "logs":        [l.to_json_public() for l in visible],
         "total":       len(visible),
         "page":        page,
         "total_pages": 1,

@@ -808,6 +808,168 @@ def handle_trash_permanent_delete_bulk(job, app):
     log_job(job, f"Done — {deleted} rule(s) permanently deleted.", level='success', event='done')
 
 
+# ─── Connector pull ───────────────────────────────────────────────────────────
+
+@register_handler('connector_pull')
+def handle_connector_pull(job, app):
+    """
+    Pull rules (and optionally bundles) from a remote Rulezet instance.
+
+    Payload:
+        connector_id : int — local Connector.id to pull from
+    """
+    import datetime
+    import requests as http_requests
+    from app.core.db_class.db import Connector
+    from app.features.connector.connector_core import (
+        _get_or_create_shadow_user, _upsert_rule, _upsert_bundle,
+    )
+    from app.core.utils.activity_log import log_activity
+
+    payload      = job.payload or {}
+    connector_id = payload.get('connector_id')
+    job_uuid     = job.uuid
+
+    with app.app_context():
+        from app.core.db_class.db import BackgroundJob as BJ
+        job = BJ.query.filter_by(uuid=job_uuid).first()
+        connector = Connector.query.get(connector_id)
+        if not connector or not connector.is_active:
+            job.status = 'failed'
+            job.error  = 'Connector not found or inactive.'
+            db.session.commit()
+            return
+
+        if connector.owner_mode == 'self':
+            effective_user_id = connector.owner_id
+        else:
+            shadow = _get_or_create_shadow_user(connector)
+            effective_user_id = shadow.id
+        headers = {'Accept': 'application/json'}
+        if connector.api_key_outbound:
+            headers['X-API-KEY'] = connector.api_key_outbound
+
+        since    = connector.last_sync_at.isoformat() if connector.last_sync_at else '1970-01-01T00:00:00'
+        base     = connector.instance_url.rstrip('/')
+        PER_PAGE = 500
+
+        log_job(job, f"Starting pull from {base} (since {since[:10]})", level='info', event='started')
+
+        # ── Pre-flight: fetch totals for progress bar ─────────────────────────
+        total_rules_remote   = 0
+        total_bundles_remote = 0
+        try:
+            if connector.sync_rules:
+                r = http_requests.get(f"{base}/api/sync/rules?since={since}&page=1&per_page=1",
+                                      headers=headers, timeout=10)
+                if r.status_code == 200:
+                    total_rules_remote = r.json().get('total', 0)
+            if connector.sync_bundles:
+                r = http_requests.get(f"{base}/api/sync/bundles?since={since}&page=1&per_page=1",
+                                      headers=headers, timeout=10)
+                if r.status_code == 200:
+                    total_bundles_remote = r.json().get('total', 0)
+        except Exception:
+            pass
+
+        job.total = max(1, total_rules_remote + total_bundles_remote)
+        job.done  = 0
+        db.session.commit()
+        log_job(job, f"Found {total_rules_remote} rule(s) and {total_bundles_remote} bundle(s) to sync.",
+                level='info', event='progress')
+
+        rules_added   = 0
+        bundles_added = 0
+        had_error     = False
+
+        # ── Pull rules ────────────────────────────────────────────────────────
+        if connector.sync_rules:
+            page = 1
+            while True:
+                if _is_cancelled(job):
+                    log_job(job, 'Cancelled.', level='warning', event='cancelled')
+                    return
+                while _should_pause(job):
+                    import time; time.sleep(2)
+
+                url = f"{base}/api/sync/rules?since={since}&page={page}&per_page={PER_PAGE}"
+                try:
+                    resp = http_requests.get(url, headers=headers, timeout=30)
+                    if resp.status_code != 200:
+                        msg = f"Remote returned HTTP {resp.status_code} for rules."
+                        log_job(job, msg, level='error', event='progress')
+                        connector.last_error = msg
+                        had_error = True
+                        break
+                    data  = resp.json()
+                    items = data.get('rules', [])
+                    for item in items:
+                        if _upsert_rule(connector, shadow.id, item):
+                            rules_added += 1
+                        job.done = min(rules_added + bundles_added, job.total)
+                    db.session.commit()
+                    log_job(job, f"Rules page {page}: {len(items)} received, {rules_added} imported.",
+                            level='info', event='progress')
+                    if not data.get('has_more', False):
+                        break
+                    page += 1
+                except Exception as exc:
+                    msg = f"Error fetching rules: {exc}"
+                    log_job(job, msg, level='error', event='progress')
+                    connector.last_error = msg
+                    had_error = True
+                    db.session.commit()
+                    break
+
+        # ── Pull bundles ──────────────────────────────────────────────────────
+        if connector.sync_bundles:
+            page = 1
+            while True:
+                if _is_cancelled(job):
+                    log_job(job, 'Cancelled.', level='warning', event='cancelled')
+                    return
+                url = f"{base}/api/sync/bundles?since={since}&page={page}&per_page={PER_PAGE}"
+                try:
+                    resp = http_requests.get(url, headers=headers, timeout=30)
+                    if resp.status_code != 200:
+                        had_error = True
+                        break
+                    data  = resp.json()
+                    items = data.get('bundles', [])
+                    for item in items:
+                        if _upsert_bundle(connector, shadow.id, item):
+                            bundles_added += 1
+                        job.done = min(rules_added + bundles_added, job.total)
+                    db.session.commit()
+                    if not data.get('has_more', False):
+                        break
+                    page += 1
+                except Exception as exc:
+                    log_job(job, f"Error fetching bundles: {exc}", level='error', event='progress')
+                    had_error = True
+                    break
+
+        # ── Finalize ──────────────────────────────────────────────────────────
+        now = datetime.datetime.now(datetime.timezone.utc)
+        # Only advance the sync cursor if the pull completed without errors
+        if not had_error:
+            connector.last_sync_at = now
+            connector.is_verified  = True
+        connector.rules_synced   += rules_added
+        connector.bundles_synced += bundles_added
+        job.done  = 1
+        job.status = 'done'
+        db.session.commit()
+
+        summary = f"Pull complete: {rules_added} rule(s), {bundles_added} bundle(s) imported."
+        log_job(job, summary, level='success', event='done')
+        log_activity('connector.pull_done',
+                     f"Connector '{connector.name}': {summary}",
+                     target_type='connector', target_id=connector.id,
+                     target_uuid=connector.uuid,
+                     extra={'rules_added': rules_added, 'bundles_added': bundles_added})
+
+
 # ─── Package management ───────────────────────────────────────────────────────
 
 @register_handler('update_package')

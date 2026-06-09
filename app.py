@@ -59,5 +59,6 @@ elif args.delete_db:
         db.drop_all()
         print("DB delete with success")
 else:
-    app.run(host=app.config.get("FLASK_URL"), port=app.config.get("FLASK_PORT"))
+    port = int(os.environ.get("PORT", app.config.get("FLASK_PORT", 7009)))
+    app.run(host=app.config.get("FLASK_URL"), port=port)
     
