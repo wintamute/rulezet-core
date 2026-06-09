@@ -70,6 +70,17 @@ def create_app():
     from app.features.jobs.job_worker import start_worker
     start_worker(app)
 
+    _version_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'version')
+    try:
+        with open(_version_path) as _f:
+            _app_version = _f.read().strip()
+    except OSError:
+        _app_version = 'unknown'
+
+    @app.context_processor
+    def inject_version():
+        return {'app_version': _app_version}
+
     return app
     
     
