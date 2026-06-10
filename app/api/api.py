@@ -106,3 +106,7 @@ api.add_namespace(account_private_ns, path="/account/private")
 # Sync / Federation API
 from .connector.connector_sync_api import sync_ns  # noqa
 api.add_namespace(sync_ns, path="/sync")
+
+# Instance registry (phone-home)
+from .instance.instance_api import instance_ns  # noqa
+api.add_namespace(instance_ns, path="/instance")

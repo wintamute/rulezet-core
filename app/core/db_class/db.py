@@ -1925,3 +1925,51 @@ class Connector(db.Model):
             'owner_id':       self.owner_id,
             'created_at':     self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None,
         }
+
+
+##########################
+#   Instance Registry    #
+##########################
+
+class InstanceConfig(db.Model):
+    """Single-row: this instance's persistent UUID and telemetry settings."""
+    __tablename__ = 'instance_config'
+    id                = db.Column(db.Integer, primary_key=True)
+    uuid              = db.Column(db.String(36), unique=True, nullable=False)
+    telemetry_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    public_url        = db.Column(db.String(512), nullable=True)
+    created_at        = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    def to_json(self):
+        return {
+            'uuid':              self.uuid,
+            'telemetry_enabled': self.telemetry_enabled,
+            'public_url':        self.public_url,
+            'created_at':        self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None,
+        }
+
+
+class RegisteredInstance(db.Model):
+    """Remote Rulezet instances that have phoned home to this instance."""
+    __tablename__ = 'registered_instance'
+    id            = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    uuid          = db.Column(db.String(36), unique=True, nullable=False, index=True)
+    public_url    = db.Column(db.String(512), nullable=True)
+    version       = db.Column(db.String(64),  nullable=True)
+    rules_count   = db.Column(db.Integer,     nullable=True)
+    bundles_count = db.Column(db.Integer,     nullable=True)
+    ping_count    = db.Column(db.Integer,     default=1, nullable=False)
+    first_seen    = db.Column(db.DateTime,    nullable=False)
+    last_seen     = db.Column(db.DateTime,    nullable=False, index=True)
+
+    def to_json(self):
+        return {
+            'uuid':          self.uuid,
+            'public_url':    self.public_url,
+            'version':       self.version,
+            'rules_count':   self.rules_count,
+            'bundles_count': self.bundles_count,
+            'ping_count':    self.ping_count,
+            'first_seen':    self.first_seen.strftime('%Y-%m-%d %H:%M'),
+            'last_seen':     self.last_seen.strftime('%Y-%m-%d %H:%M'),
+        }

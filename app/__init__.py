@@ -85,10 +85,82 @@ def create_app(start_worker=True):
     except OSError:
         _app_version = 'unknown'
 
+    app.config['APP_VERSION'] = _app_version
+
     @app.context_processor
-    def inject_version():
-        return {'app_version': _app_version}
+    def inject_globals():
+        return {
+            'app_version':        _app_version,
+            'is_official':        app.config.get('IS_OFFICIAL_INSTANCE', False),
+        }
+
+    _init_instance_config(app)
+    if start_worker:
+        _start_telemetry(app)
 
     return app
+
+
+def _init_instance_config(app):
+    """Generate a persistent UUID for this instance on first boot."""
+    from uuid import uuid4
+    from app.core.db_class.db import InstanceConfig
+    with app.app_context():
+        try:
+            if not InstanceConfig.query.first():
+                cfg = InstanceConfig(
+                    uuid              = str(uuid4()),
+                    telemetry_enabled = True,
+                    public_url        = app.config.get('INSTANCE_PUBLIC_URL'),
+                )
+                db.session.add(cfg)
+                db.session.commit()
+        except Exception:
+            pass
+
+
+def _start_telemetry(app):
+    """Daemon thread: ping rulezet.org every 24 h so the community can see this instance."""
+    import threading
+    import time
+    import uuid as _uuid_mod
+    import requests as _req
+    from app.core.db_class.db import InstanceConfig, Rule, Bundle
+
+    PING_URL      = os.environ.get('TELEMETRY_URL', 'https://rulezet.org/api/instance/register')
+    STARTUP_DELAY = int(os.environ.get('TELEMETRY_STARTUP_DELAY', 90))
+    INTERVAL      = int(os.environ.get('TELEMETRY_INTERVAL',      86400))
+
+    def _loop():
+        time.sleep(STARTUP_DELAY)
+        while True:
+            try:
+                with app.app_context():
+                    cfg = InstanceConfig.query.first()
+                    if cfg and cfg.telemetry_enabled:
+                        # Prefer manually configured URL; fall back to Flask host:port
+                        reported_url = cfg.public_url or (
+                            f"http://{app.config.get('FLASK_URL', '127.0.0.1')}"
+                            f":{app.config.get('FLASK_PORT', 7009)}"
+                        )
+                        # Derive a UUID unique to this *endpoint* (base + url).
+                        # Two processes sharing the same DB but on different ports
+                        # will therefore register as distinct instances.
+                        endpoint_uuid = str(_uuid_mod.uuid5(
+                            _uuid_mod.UUID(cfg.uuid), reported_url
+                        ))
+                        _req.post(PING_URL, json={
+                            'uuid':          endpoint_uuid,
+                            'url':           reported_url,
+                            'version':       app.config.get('APP_VERSION', 'unknown'),
+                            'rules_count':   Rule.query.filter_by(is_deleted=False).count(),
+                            'bundles_count': Bundle.query.count(),
+                        }, timeout=8)
+            except Exception:
+                pass
+            time.sleep(INTERVAL)
+
+    t = threading.Thread(target=_loop, daemon=True, name='rulezet-telemetry')
+    t.start()
     
     
