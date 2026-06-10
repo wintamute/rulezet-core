@@ -43,7 +43,7 @@ def admin_instances():
             f"http://{current_app.config.get('FLASK_URL', '127.0.0.1')}"
             f":{current_app.config.get('FLASK_PORT', 7009)}"
         )
-        own_endpoint_uuid = str(_uuid_mod.uuid5(_uuid_mod.UUID(own_cfg.uuid), reported_url))
+        own_endpoint_uuid = str(_uuid_mod.uuid5(_uuid_mod.NAMESPACE_URL, reported_url))
     return render_template(
         "admin/instances.html",
         instances=[i.to_json() for i in instances],

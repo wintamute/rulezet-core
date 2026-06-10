@@ -726,6 +726,73 @@ def admin_settings_generate_key():
     return jsonify({'success': True, 'key': key})
 
 
+@home_blueprint.route('/admin/settings/instance', methods=['GET'])
+@login_required
+def admin_settings_instance():
+    if not current_user.is_admin():
+        return jsonify({'error': 'Unauthorized'}), 403
+    from .core.db_class.db import InstanceConfig
+    cfg = InstanceConfig.query.first()
+    if not cfg:
+        return jsonify({'exists': False})
+    reported_url = cfg.public_url or (
+        f"http://{current_app.config.get('FLASK_URL', '127.0.0.1')}"
+        f":{current_app.config.get('FLASK_PORT', 7009)}"
+    )
+    return jsonify({
+        'exists':           True,
+        'uuid':             cfg.uuid,
+        'endpoint_uuid':    cfg.endpoint_uuid,
+        'telemetry_enabled': cfg.telemetry_enabled,
+        'public_url':       cfg.public_url,
+        'reported_url':     reported_url,
+        'version':          cfg.version,
+        'last_started_at':  cfg.last_started_at.strftime('%Y-%m-%d %H:%M:%S') if cfg.last_started_at else None,
+        'created_at':       cfg.created_at.strftime('%Y-%m-%d %H:%M:%S') if cfg.created_at else None,
+        'is_official':      current_app.config.get('IS_OFFICIAL_INSTANCE', False),
+        'telemetry_url':    'https://rulezet.org/api/instance/register',
+    })
+
+
+@home_blueprint.route('/admin/settings/instance/init', methods=['POST'])
+@login_required
+def admin_settings_instance_init():
+    """Generate / refresh endpoint_uuid, version, last_started_at in InstanceConfig."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Unauthorized'}), 403
+    import uuid as _uuid_mod
+    import datetime as _dt
+    from app import db
+    from .core.db_class.db import InstanceConfig
+    from .core.utils.activity_log import log_activity
+
+    cfg = InstanceConfig.query.first()
+    if not cfg:
+        cfg = InstanceConfig(
+            uuid=str(_uuid_mod.uuid4()),
+            telemetry_enabled=True,
+            public_url=current_app.config.get('INSTANCE_PUBLIC_URL'),
+        )
+        db.session.add(cfg)
+        db.session.flush()
+
+    reported_url = cfg.public_url or (
+        f"http://{current_app.config.get('FLASK_URL', '127.0.0.1')}"
+        f":{current_app.config.get('FLASK_PORT', 7009)}"
+    )
+    cfg.endpoint_uuid   = str(_uuid_mod.uuid5(_uuid_mod.NAMESPACE_URL, reported_url))
+    cfg.version         = current_app.config.get('APP_VERSION', 'unknown')
+    cfg.last_started_at = _dt.datetime.utcnow()
+    db.session.commit()
+    log_activity('admin.instance_init', 'Instance config initialized/refreshed from admin settings')
+    return jsonify({
+        'success':       True,
+        'endpoint_uuid': cfg.endpoint_uuid,
+        'version':       cfg.version,
+        'last_started_at': cfg.last_started_at.strftime('%Y-%m-%d %H:%M:%S'),
+    })
+
+
 @home_blueprint.route('/admin/logs/set_visibility', methods=['POST'])
 @login_required
 def set_logs_visibility():

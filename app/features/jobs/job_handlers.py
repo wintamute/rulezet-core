@@ -926,10 +926,12 @@ def handle_connector_pull(job, app):
         bundles_skipped = 0
         had_error       = False
 
+        MAX_PAGES = 10_000  # safety guard against infinite pagination loops
+
         # ── Pull rules ────────────────────────────────────────────────────────
         if connector.sync_rules:
             page = 1
-            while True:
+            while page <= MAX_PAGES:
                 if _is_cancelled(job):
                     log_job(job, 'Cancelled.', level='warning', event='cancelled')
                     return
@@ -947,6 +949,8 @@ def handle_connector_pull(job, app):
                         break
                     data  = resp.json()
                     items = data.get('rules', [])
+                    if not items and page > 1:
+                        break  # empty page — remote lied about has_more
                     pg_created = pg_updated = pg_skipped = 0
                     for item in items:
                         try:
@@ -957,14 +961,18 @@ def handle_connector_pull(job, app):
                                 rules_updated += 1; pg_updated += 1
                             elif result == 'skipped':
                                 rules_skipped += 1; pg_skipped += 1
+                            else:
+                                rules_errors += 1
                         except Exception as item_exc:
                             rules_errors += 1
                             log_job(job, f"Error on rule '{item.get('title', '?')}': {item_exc}",
                                     level='warning', event='progress')
-                        job.done = min(rules_created + rules_updated + bundles_created, job.total)
+                        # Count every processed item so the progress bar actually moves
+                        processed = rules_created + rules_updated + rules_skipped + rules_errors + bundles_created + bundles_updated + bundles_skipped
+                        job.done = min(processed, job.total)
                     db.session.commit()
                     log_job(job,
-                            f"Rules p.{page}: +{pg_created} new, ~{pg_updated} updated, ={pg_skipped} skipped.",
+                            f"Rules p.{page}: +{pg_created} new, ~{pg_updated} replaced, ={pg_skipped} skipped.",
                             level='info', event='progress')
                     if not data.get('has_more', False):
                         break
@@ -980,10 +988,13 @@ def handle_connector_pull(job, app):
         # ── Pull bundles ──────────────────────────────────────────────────────
         if connector.sync_bundles:
             page = 1
-            while True:
+            while page <= MAX_PAGES:
                 if _is_cancelled(job):
                     log_job(job, 'Cancelled.', level='warning', event='cancelled')
                     return
+                while _should_pause(job):
+                    import time; time.sleep(2)
+
                 url = f"{base}/api/sync/bundles?since={since}&page={page}&per_page={PER_PAGE}"
                 try:
                     resp = http_requests.get(url, headers=headers, timeout=30)
@@ -992,15 +1003,22 @@ def handle_connector_pull(job, app):
                         break
                     data  = resp.json()
                     items = data.get('bundles', [])
+                    if not items and page > 1:
+                        break  # empty page — remote lied about has_more
                     for item in items:
-                        result = _upsert_bundle(connector, effective_user_id, item, mode=mode, triggered_by_id=job.created_by)
-                        if result == 'created':
-                            bundles_created += 1
-                        elif result == 'updated':
-                            bundles_updated += 1
-                        elif result == 'skipped':
-                            bundles_skipped += 1
-                        job.done = min(rules_created + rules_updated + bundles_created, job.total)
+                        try:
+                            result = _upsert_bundle(connector, effective_user_id, item, mode=mode, triggered_by_id=job.created_by)
+                            if result == 'created':
+                                bundles_created += 1
+                            elif result == 'updated':
+                                bundles_updated += 1
+                            elif result == 'skipped':
+                                bundles_skipped += 1
+                        except Exception as bundle_exc:
+                            log_job(job, f"Error on bundle '{item.get('name', '?')}': {bundle_exc}",
+                                    level='warning', event='progress')
+                        processed = rules_created + rules_updated + rules_skipped + rules_errors + bundles_created + bundles_updated + bundles_skipped
+                        job.done = min(processed, job.total)
                     db.session.commit()
                     if not data.get('has_more', False):
                         break

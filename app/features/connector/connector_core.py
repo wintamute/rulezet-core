@@ -7,8 +7,12 @@ functions and never touch the session directly.
 
 import datetime
 import uuid as uuid_mod
+import logging
 
 import requests as http_requests
+from sqlalchemy.exc import IntegrityError
+
+logger = logging.getLogger(__name__)
 
 from app import db
 from app.core.db_class.db import (
@@ -44,8 +48,18 @@ def _get_or_create_shadow_user(connector: Connector) -> User:
         admin=False,
     )
     shadow.password = uuid_mod.uuid4().hex   # random password — cannot login
-    db.session.add(shadow)
-    db.session.flush()
+    try:
+        db.session.add(shadow)
+        db.session.flush()
+    except IntegrityError:
+        # Another concurrent call already created this shadow user
+        db.session.rollback()
+        existing = User.query.filter_by(email=shadow_email).first()
+        if existing:
+            connector.shadow_user_id = existing.id
+            db.session.commit()
+            return existing
+        raise
 
     connector.shadow_user_id = shadow.id
     db.session.commit()
@@ -333,6 +347,7 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
 
     # ── Hard mode: delete local match, salvage its history ───────────────────
     salvaged_history = []
+    was_replacement  = False
     if local_match and mode == 'hard':
         # Collect local history entries to re-attach to the new rule
         for h in local_match.rule_update_history.all():
@@ -348,6 +363,7 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
         local_match.is_deleted    = True
         local_match.deleted_at    = now
         local_match.deleted_by_id = owner_id
+        was_replacement           = True
         db.session.flush()
 
     # ── Create the new rule from remote data ──────────────────────────────────
@@ -377,7 +393,7 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
 
     # Import history: salvaged local entries first, then remote entries (dedup by date)
     _import_rule_history(rule, salvaged_history + remote.get('update_history', []), owner_id)
-    return 'created'
+    return 'updated' if was_replacement else 'created'
 
 
 def _import_rule_history(rule: Rule, history: list, fallback_user_id: int) -> None:
@@ -408,8 +424,8 @@ def _import_rule_history(rule: Rule, history: list, fallback_user_id: int) -> No
                 analyzed_at=raw,
                 manuel_submit=h.get('manuel_submit', False),
             ))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("_import_rule_history: skipped entry for rule %s: %s", rule.id, exc)
 
 
 def _sync_tags(rule: Rule, tag_names: list, user_id: int) -> None:
@@ -453,8 +469,8 @@ def _upsert_bundle(connector: Connector, shadow_user_id: int, remote: dict,
         remote_ts = remote.get('updated_at')
         if remote_ts and existing.updated_at:
             try:
-                remote_dt = datetime.datetime.fromisoformat(remote_ts.replace('Z', '+00:00'))
-                if remote_dt <= existing.updated_at.replace(tzinfo=datetime.timezone.utc):
+                remote_dt = datetime.datetime.fromisoformat(remote_ts.replace('Z', '+00:00')).replace(tzinfo=None)
+                if remote_dt <= existing.updated_at:
                     return 'unchanged'
             except ValueError:
                 pass

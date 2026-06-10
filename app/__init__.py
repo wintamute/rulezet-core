@@ -102,19 +102,31 @@ def create_app(start_worker=True):
 
 
 def _init_instance_config(app):
-    """Generate a persistent UUID for this instance on first boot."""
-    from uuid import uuid4
+    """Create or refresh the single InstanceConfig row on every boot."""
+    import uuid as _uuid_mod
+    import datetime
     from app.core.db_class.db import InstanceConfig
     with app.app_context():
         try:
-            if not InstanceConfig.query.first():
+            cfg = InstanceConfig.query.first()
+            if not cfg:
                 cfg = InstanceConfig(
-                    uuid              = str(uuid4()),
+                    uuid              = str(_uuid_mod.uuid4()),
                     telemetry_enabled = True,
                     public_url        = app.config.get('INSTANCE_PUBLIC_URL'),
                 )
                 db.session.add(cfg)
-                db.session.commit()
+                db.session.flush()
+
+            # Compute the stable endpoint UUID from the reported URL
+            reported_url = cfg.public_url or (
+                f"http://{app.config.get('FLASK_URL', '127.0.0.1')}"
+                f":{app.config.get('FLASK_PORT', 7009)}"
+            )
+            cfg.endpoint_uuid   = str(_uuid_mod.uuid5(_uuid_mod.NAMESPACE_URL, reported_url))
+            cfg.version         = app.config.get('APP_VERSION', 'unknown')
+            cfg.last_started_at = datetime.datetime.utcnow()
+            db.session.commit()
         except Exception:
             pass
 
@@ -143,11 +155,11 @@ def _start_telemetry(app):
                             f"http://{app.config.get('FLASK_URL', '127.0.0.1')}"
                             f":{app.config.get('FLASK_PORT', 7009)}"
                         )
-                        # Derive a UUID unique to this *endpoint* (base + url).
-                        # Two processes sharing the same DB but on different ports
-                        # will therefore register as distinct instances.
+                        # Derive a deterministic UUID from the URL alone.
+                        # uuid5(NAMESPACE_URL, url) is stable across DB resets and
+                        # distinct for each host:port combination.
                         endpoint_uuid = str(_uuid_mod.uuid5(
-                            _uuid_mod.UUID(cfg.uuid), reported_url
+                            _uuid_mod.NAMESPACE_URL, reported_url
                         ))
                         _req.post(PING_URL, json={
                             'uuid':          endpoint_uuid,
