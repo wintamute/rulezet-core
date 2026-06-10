@@ -545,3 +545,372 @@ body.dark-mode .connector-card {
 .cnt-checkbox { width: 15px; height: 15px; cursor: pointer; accent-color: #0d6efd; }
 
 
+/* ══════════════════════════════════════════════════════════
+   Pull modal
+══════════════════════════════════════════════════════════ */
+
+/* Mode cards */
+.pull-mode-card {
+    display: block;
+    padding: .9rem 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    background: var(--card-bg-color);
+    user-select: none;
+}
+.pull-mode-card:hover {
+    border-color: rgba(13,110,253,.3);
+    background: rgba(13,110,253,.02);
+}
+.pull-mode-card--active.pull-mode-card--soft {
+    border-color: #198754;
+    background: rgba(25,135,84,.04);
+}
+.pull-mode-card--active.pull-mode-card--hard {
+    border-color: #ffc107;
+    background: rgba(255,193,7,.04);
+}
+
+.pull-filters-notice {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .75rem;
+    color: var(--subtle-text-color);
+    padding: .45rem .75rem;
+    background: rgba(108,117,125,.06);
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   ConnectorPullFilter — cpf-* namespace
+══════════════════════════════════════════════════════════ */
+
+.cpf-root {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* ── Header ────────────────────────────────────────────── */
+.cpf-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .65rem 1rem;
+    background: var(--light-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+}
+.cpf-clear-all {
+    background: none;
+    border: none;
+    font-size: .75rem;
+    color: var(--subtle-text-color);
+    cursor: pointer;
+    padding: .15rem .4rem;
+    border-radius: 6px;
+    transition: color .15s, background .15s;
+}
+.cpf-clear-all:hover { color: #dc3545; background: rgba(220,53,69,.06); }
+
+/* ── Section ───────────────────────────────────────────── */
+.cpf-section {
+    padding: .9rem 1rem;
+    border: 1px solid var(--border-color);
+    border-top: none;
+    background: var(--card-bg-color);
+}
+.cpf-section:last-child { border-radius: 0 0 12px 12px; }
+
+.cpf-section-label {
+    font-size: .8rem;
+    font-weight: 700;
+    color: var(--text-color);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: .6rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+.cpf-section-hint {
+    font-weight: 400;
+    font-size: .7rem;
+    color: var(--subtle-text-color);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ── Date ──────────────────────────────────────────────── */
+.cpf-date-field { display: flex; align-items: center; gap: .4rem; }
+.cpf-date-label { font-size: .72rem; color: var(--subtle-text-color); white-space: nowrap; }
+.cpf-date-input {
+    padding: .25rem .55rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg-color);
+    color: var(--text-color);
+    font-size: .8rem;
+    outline: none;
+    transition: border-color .15s;
+}
+.cpf-date-input:focus { border-color: #0d6efd; }
+.cpf-date-sep { color: var(--subtle-text-color); }
+.cpf-mini-clear {
+    background: none;
+    border: none;
+    font-size: .75rem;
+    color: var(--subtle-text-color);
+    cursor: pointer;
+    padding: .15rem .3rem;
+    border-radius: 5px;
+}
+.cpf-mini-clear:hover { color: #dc3545; }
+
+/* ── Format grid ───────────────────────────────────────── */
+.cpf-format-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+}
+.cpf-format-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .3rem .7rem;
+    border-radius: 20px;
+    border: 1.5px solid var(--border-color);
+    background: var(--card-bg-color);
+    color: var(--subtle-text-color);
+    font-size: .75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+}
+.cpf-format-btn:hover { border-color: #0d6efd; color: #0d6efd; }
+.cpf-format-btn--active {
+    background: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff !important;
+}
+.cpf-mini-action {
+    font-size: .68rem;
+    padding: .1rem .45rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg-color);
+    color: var(--subtle-text-color);
+    cursor: pointer;
+    transition: all .15s;
+}
+.cpf-mini-action:hover { border-color: #0d6efd; color: #0d6efd; }
+
+/* ── Source chips (tag browser) ────────────────────────── */
+.cpf-source-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: .7rem;
+    font-weight: 600;
+    padding: .15rem .55rem;
+    border-radius: 20px;
+    border: 1.5px solid var(--border-color);
+    background: var(--card-bg-color);
+    color: var(--subtle-text-color);
+    cursor: pointer;
+    transition: all .15s;
+}
+.cpf-source-chip:hover { border-color: rgba(13,110,253,.4); }
+.cpf-source-chip--active { font-weight: 700; }
+
+/* ── Logic AND/OR toggle ───────────────────────────────── */
+.cpf-logic-toggle {
+    display: flex;
+    border: 1.5px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.cpf-logic-btn {
+    padding: .18rem .55rem;
+    border: none;
+    background: var(--card-bg-color);
+    color: var(--subtle-text-color);
+    font-size: .7rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+.cpf-logic-btn + .cpf-logic-btn { border-left: 1px solid var(--border-color); }
+.cpf-logic-btn--active { background: #0d6efd; color: #fff; }
+
+/* ── Include / Exclude toggle ──────────────────────────── */
+.cpf-excl-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .18rem .6rem;
+    border-radius: 8px;
+    border: 1.5px solid var(--border-color);
+    background: var(--card-bg-color);
+    color: var(--subtle-text-color);
+    font-size: .7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+}
+.cpf-excl-btn--active {
+    background: rgba(220,53,69,.1);
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+/* ── Selected chips ────────────────────────────────────── */
+.cpf-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+    align-items: center;
+}
+.cpf-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .2rem;
+    padding: .18rem .55rem;
+    border-radius: 20px;
+    font-size: .72rem;
+    font-weight: 600;
+    background: rgba(13,110,253,.1);
+    color: #0d6efd;
+    border: 1px solid rgba(13,110,253,.2);
+    cursor: pointer;
+    transition: all .15s;
+}
+.cpf-chip:hover { background: rgba(13,110,253,.18); }
+.cpf-chip--exclude {
+    background: rgba(220,53,69,.08);
+    color: #dc3545;
+    border-color: rgba(220,53,69,.2);
+}
+.cpf-chip--cve    { background: rgba(220,53,69,.08);  color: #dc3545;  border-color: rgba(220,53,69,.2); }
+.cpf-chip--license{ background: rgba(13,202,240,.08); color: #0dcaf0;  border-color: rgba(13,202,240,.2); }
+.cpf-chip--author { background: rgba(108,117,125,.08);color: #6c757d;  border-color: var(--border-color); }
+
+.cpf-logic-badge {
+    font-size: .6rem;
+    font-weight: 700;
+    padding: .1rem .35rem;
+    border-radius: 4px;
+    background: rgba(13,110,253,.12);
+    color: #0d6efd;
+    letter-spacing: .04em;
+}
+
+/* ── Search box ────────────────────────────────────────── */
+.cpf-search-box {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .3rem .7rem;
+    border-radius: 10px;
+    border: 1.5px solid var(--border-color);
+    background: var(--card-bg-color);
+    cursor: text;
+    transition: border-color .15s;
+}
+.cpf-search-box:focus-within { border-color: #0d6efd; }
+.cpf-search-icon { font-size: .75rem; color: var(--subtle-text-color); flex-shrink: 0; }
+.cpf-search-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: .82rem;
+    color: var(--text-color);
+    min-width: 0;
+}
+.cpf-search-input::placeholder { color: var(--subtle-text-color); }
+
+/* ── Dropdown items ────────────────────────────────────── */
+.cpf-dropdown { padding: .4rem; }
+.cpf-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .4rem .6rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background .12s;
+    font-size: .82rem;
+    color: var(--text-color);
+}
+.cpf-dropdown-item:hover { background: rgba(13,110,253,.06); }
+.cpf-dropdown-item--selected { background: rgba(13,110,253,.08); }
+
+/* Namespace row */
+.cpf-ns-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .45rem .6rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+    margin-bottom: .25rem;
+}
+.cpf-ns-row:hover { background: rgba(13,110,253,.04); border-color: rgba(13,110,253,.2); }
+
+/* ── Authors input ─────────────────────────────────────── */
+.cpf-author-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .3rem .7rem;
+    border-radius: 10px;
+    border: 1.5px solid var(--border-color);
+    background: var(--card-bg-color);
+    transition: border-color .15s;
+}
+.cpf-author-input-wrap:focus-within { border-color: #0d6efd; }
+.cpf-add-btn {
+    background: #0d6efd;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: .75rem;
+    padding: .15rem .4rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity .15s;
+}
+.cpf-add-btn:hover { opacity: .85; }
+
+/* Manual text input (shared across tags / CVEs / licenses / authors) */
+.cpf-manual-wrap {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .3rem .7rem;
+    border-radius: 10px;
+    border: 1.5px dashed var(--border-color);
+    background: var(--card-bg-color);
+    transition: border-color .15s;
+}
+.cpf-manual-wrap:focus-within { border-color: #0d6efd; border-style: solid; }
+
+/* "Add X manually" option inside dropdown when search yields no results */
+.cpf-dropdown-item--manual {
+    border-top: 1px solid var(--border-color);
+    margin-top: .25rem;
+    padding-top: .45rem;
+    color: #0d6efd;
+    font-size: .82rem;
+    cursor: pointer;
+}
+.cpf-dropdown-item--manual:hover { background: rgba(13,110,253,.06); }
+

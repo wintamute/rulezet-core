@@ -1885,6 +1885,10 @@ class Connector(db.Model):
     rules_synced    = db.Column(db.Integer, nullable=False, default=0)
     bundles_synced  = db.Column(db.Integer, nullable=False, default=0)
 
+    # Remote instance totals — updated on each successful connection test
+    remote_rules_count   = db.Column(db.Integer, nullable=True)
+    remote_bundles_count = db.Column(db.Integer, nullable=True)
+
     created_at = db.Column(db.DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc),
                            onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
@@ -1894,8 +1898,8 @@ class Connector(db.Model):
     shadow_user = db.relationship('User', foreign_keys=[shadow_user_id])
 
     def to_json(self):
-        rules_count   = Rule.query.filter_by(connector_id=self.id, is_deleted=False).count()
-        bundles_count = Bundle.query.filter_by(connector_id=self.id).count()
+        local_rules_count   = Rule.query.filter_by(connector_id=self.id, is_deleted=False).count()
+        local_bundles_count = Bundle.query.filter_by(connector_id=self.id).count()
         return {
             'id':             self.id,
             'uuid':           self.uuid,
@@ -1912,8 +1916,10 @@ class Connector(db.Model):
             'is_verified':    self.is_verified,
             'last_error':     self.last_error,
             'last_sync_at':   self.last_sync_at.strftime('%Y-%m-%d %H:%M') if self.last_sync_at else None,
-            'rules_count':    rules_count,
-            'bundles_count':  bundles_count,
+            'rules_count':    self.remote_rules_count,
+            'bundles_count':  self.remote_bundles_count,
+            'local_rules_count':    local_rules_count,
+            'local_bundles_count':  local_bundles_count,
             'rules_synced':   self.rules_synced,
             'bundles_synced': self.bundles_synced,
             'owner_id':       self.owner_id,

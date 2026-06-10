@@ -113,7 +113,7 @@ const ConnectorRow = {
         csrfToken: { type: String,  required: true },
         selected:  { type: Boolean, default: false },
     },
-    emits: ['toggle-select', 'edit', 'deleted'],
+    emits: ['toggle-select', 'edit', 'deleted', 'pull-requested'],
     setup(props, { emit }) {
         const expanded       = ref(false)
         const historyLoaded  = ref(false)
@@ -149,20 +149,6 @@ const ConnectorRow = {
             } finally { actionBusy.value = null }
         }
 
-        async function pullConn(mode = 'soft') {
-            if (props.c.is_self) {
-                create_message('Cannot pull from this instance — self-sync not allowed.', 'warning')
-                return
-            }
-            actionBusy.value = 'pull'
-            try {
-                const r    = await doPost(`/connector/pull/${props.c.uuid}`, { mode })
-                const data = await r.json()
-                const label = mode === 'hard' ? 'Hard' : 'Soft'
-                create_message(data.success ? `${label} pull queued.` : (data.error || 'Error'), data.success ? 'success' : 'danger')
-            } finally { actionBusy.value = null }
-        }
-
         async function deleteConn() {
             if (!confirm(`Delete connector "${props.c.name}"?`)) return
             const r    = await doPost(`/connector/delete/${props.c.uuid}`)
@@ -193,7 +179,7 @@ const ConnectorRow = {
             visibleHistory, hasMoreHistory, loadMoreHistory,
             statusClass, statusLabel, statusIcon,
             actionBadgeClass, actionIcon, dotClass,
-            testConn, pullConn, deleteConn, toggleHistory,
+            testConn, deleteConn, toggleHistory,
         }
     },
     template: `
@@ -254,29 +240,10 @@ const ConnectorRow = {
           <div v-if="c.is_self" class="cnt-btn" title="Cannot pull from this instance (self)" style="opacity:.4;cursor:not-allowed;">
             <i class="fa-solid fa-cloud-arrow-down"></i>
           </div>
-          <div v-else class="dropdown">
-            <button class="cnt-btn cnt-btn--success" :disabled="actionBusy==='pull'"
-                    v-dropdown-fixed data-bs-toggle="dropdown" aria-expanded="false">
-              <span v-if="actionBusy==='pull'" class="spinner-border spinner-border-sm"></span>
-              <i v-else class="fa-solid fa-cloud-arrow-down"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px;font-size:.82rem;">
-              <li>
-                <button class="dropdown-item" @click="pullConn('soft')">
-                  <i class="fa-solid fa-feather me-2 text-success"></i>
-                  <strong>Soft pull</strong>
-                  <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Safe — imports only rules that don't exist locally yet (checked by UUID and content). Existing rules are never touched.</div>
-                </button>
-              </li>
-              <li>
-                <button class="dropdown-item" @click="pullConn('hard')">
-                  <i class="fa-solid fa-bolt me-2 text-warning"></i>
-                  <strong>Hard pull</strong>
-                  <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Aggressive — if a local rule matches (by UUID or content), it is moved to trash and replaced by the remote version. Use to force a full resync.</div>
-                </button>
-              </li>
-            </ul>
-          </div>
+          <button v-else class="cnt-btn cnt-btn--success" title="Pull rules from this connector"
+                  @click="$emit('pull-requested', c)">
+            <i class="fa-solid fa-cloud-arrow-down"></i>
+          </button>
         </template>
         <button v-if="!c.is_system" class="cnt-btn cnt-btn--danger" title="Delete" @click="deleteConn">
           <i class="fa-solid fa-trash"></i>
@@ -412,7 +379,7 @@ const ConnectorCard = {
         csrfToken: { type: String,  required: true },
         selected:  { type: Boolean, default: false },
     },
-    emits: ['toggle-select', 'edit', 'deleted'],
+    emits: ['toggle-select', 'edit', 'deleted', 'pull-requested'],
     setup(props, { emit }) {
         const expanded       = ref(false)
         const historyLoaded  = ref(false)
@@ -448,20 +415,6 @@ const ConnectorCard = {
             } finally { actionBusy.value = null }
         }
 
-        async function pullConn(mode = 'soft') {
-            if (props.c.is_self) {
-                create_message('Cannot pull from this instance — self-sync not allowed.', 'warning')
-                return
-            }
-            actionBusy.value = 'pull'
-            try {
-                const r    = await doPost(`/connector/pull/${props.c.uuid}`, { mode })
-                const data = await r.json()
-                const label = mode === 'hard' ? 'Hard' : 'Soft'
-                create_message(data.success ? `${label} pull queued.` : (data.error || 'Error'), data.success ? 'success' : 'danger')
-            } finally { actionBusy.value = null }
-        }
-
         async function deleteConn() {
             if (!confirm(`Delete connector "${props.c.name}"?`)) return
             const r    = await doPost(`/connector/delete/${props.c.uuid}`)
@@ -492,7 +445,7 @@ const ConnectorCard = {
             visibleHistory, hasMoreHistory, loadMoreHistory,
             statusClass, statusLabel, statusIcon,
             actionBadgeClass, actionIcon, dotClass,
-            testConn, pullConn, deleteConn, toggleHistory,
+            testConn, deleteConn, toggleHistory,
         }
     },
     template: `
@@ -568,30 +521,11 @@ const ConnectorCard = {
       <button v-if="c.is_self" class="btn btn-sm btn-outline-secondary rounded-pill" disabled title="Cannot pull from this instance (self)">
         <i class="fa-solid fa-cloud-arrow-down me-1"></i>Pull
       </button>
-      <div v-else class="dropdown">
-        <button class="btn btn-sm btn-outline-success rounded-pill"
-                :disabled="actionBusy==='pull'"
-                v-dropdown-fixed data-bs-toggle="dropdown" aria-expanded="false">
-          <span v-if="actionBusy==='pull'" class="spinner-border spinner-border-sm me-1"></span>
-          <i v-else class="fa-solid fa-cloud-arrow-down me-1"></i>Pull
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px;font-size:.82rem;">
-          <li>
-            <button class="dropdown-item" @click="pullConn('soft')">
-              <i class="fa-solid fa-feather me-2 text-success"></i>
-              <strong>Soft pull</strong>
-              <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Add new only — skip existing</div>
-            </button>
-          </li>
-          <li>
-            <button class="dropdown-item" @click="pullConn('hard')">
-              <i class="fa-solid fa-bolt me-2 text-warning"></i>
-              <strong>Hard pull</strong>
-              <div class="text-muted" style="font-size:.72rem;padding-left:1.4rem;">Add new + overwrite if remote is newer</div>
-            </button>
-          </li>
-        </ul>
-      </div>
+      <button v-else class="btn btn-sm btn-outline-success rounded-pill"
+              title="Pull rules from this connector"
+              @click="$emit('pull-requested', c)">
+        <i class="fa-solid fa-cloud-arrow-down me-1"></i>Pull
+      </button>
     </template>
     <button class="btn btn-sm btn-outline-secondary rounded-pill" @click="toggleHistory">
       <i :class="['fa-solid', expanded ? 'fa-chevron-up' : 'fa-clock-rotate-left', 'me-1']"></i>History
@@ -714,7 +648,7 @@ export default {
         csrfToken: { type: String,  required: true },
         section:   { type: String,  default: 'rulezet' },  // 'rulezet' | 'other'
     },
-    emits: ['create', 'edit', 'count'],
+    emits: ['create', 'edit', 'count', 'pull-requested'],
 
     expose: ['refresh'],
 
@@ -950,6 +884,7 @@ export default {
           :selected="selectedUuids.has(c.uuid)"
           @toggle-select="toggleSelect"
           @edit="$emit('edit', $event)"
+          @pull-requested="$emit('pull-requested', $event)"
           @deleted="refresh">
         </connector-row>
       </table>
@@ -963,6 +898,7 @@ export default {
           :selected="selectedUuids.has(c.uuid)"
           @toggle-select="toggleSelect"
           @edit="$emit('edit', $event)"
+          @pull-requested="$emit('pull-requested', $event)"
           @deleted="refresh">
         </connector-card>
       </div>

@@ -862,6 +862,37 @@ def handle_connector_pull(job, app):
 
         log_job(job, f"Starting {mode} pull from {base} (since {since[:10]})", level='info', event='started')
 
+        # ── Manifest preflight: verify remote supports sync API ────────────────
+        try:
+            mf_resp = http_requests.get(f"{base}/api/sync/manifest", headers=headers, timeout=8)
+            if mf_resp.status_code == 404:
+                msg = ("Remote does not support the sync API — it may be running an older version of "
+                       "Rulezet that does not support federation. Ask the remote admin to upgrade.")
+                log_job(job, msg, level='error', event='done')
+                job.status = 'failed'
+                job.error  = msg
+                connector.last_error = msg
+                db.session.commit()
+                return
+            elif mf_resp.status_code != 200:
+                msg = f"Remote manifest check failed (HTTP {mf_resp.status_code}) — check connectivity."
+                log_job(job, msg, level='error', event='done')
+                job.status = 'failed'
+                job.error  = msg
+                connector.last_error = msg
+                db.session.commit()
+                return
+            mf_data    = mf_resp.json()
+            remote_ver = mf_data.get('instance', {}).get('version', 'unknown')
+            log_job(job, f"Remote version: {remote_ver}", level='info', event='progress')
+            caps = mf_data.get('capabilities', {})
+            if connector.sync_rules and not caps.get('sync_rules', True):
+                log_job(job, "Remote reports sync_rules=false — no rules will be fetched.", level='warning', event='progress')
+            if connector.sync_bundles and not caps.get('sync_bundles', True):
+                log_job(job, "Remote reports sync_bundles=false — no bundles will be fetched.", level='warning', event='progress')
+        except Exception as mf_exc:
+            log_job(job, f"Manifest preflight failed: {mf_exc}", level='warning', event='progress')
+
         # ── Pre-flight: fetch totals for progress bar ─────────────────────────
         total_rules_remote   = 0
         total_bundles_remote = 0

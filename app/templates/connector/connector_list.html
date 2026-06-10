@@ -110,6 +110,7 @@
       :csrf-token="CSRF"
       @create="openCreate('rulezet')"
       @edit="openEdit"
+      @pull-requested="openPullModal"
       class="mb-5">
    </connector-table>
 
@@ -229,13 +230,116 @@
    </div>
 </div>
 
+<!-- ── Pull modal ──────────────────────────────────────────── -->
+<div class="modal fade" id="pullModal" tabindex="-1">
+   <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg" style="background:var(--card-bg-color);">
+
+         <div class="modal-header border-bottom">
+            <div class="d-flex align-items-center gap-2">
+               <i class="fa-solid fa-cloud-arrow-down text-primary"></i>
+               <h5 class="modal-title fw-bold mb-0">
+                  Pull from <span class="text-primary">[[ pullConnector?.name || '…' ]]</span>
+               </h5>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+         </div>
+
+         <div class="modal-body p-4">
+
+            <!-- Connector info strip -->
+            <div v-if="pullConnector" class="d-flex align-items-center gap-3 p-3 mb-4 rounded-3"
+                 style="background:var(--light-bg-color);border:1px solid var(--border-color);">
+               <div class="cnt-icon-sm" :class="pullConnector.is_verified ? 'cnt-icon-sm--ok' : (pullConnector.last_error ? 'cnt-icon-sm--err' : '')">
+                  <i :class="pullConnector.icon || 'fa-solid fa-plug'"></i>
+               </div>
+               <div class="flex-grow-1 min-w-0">
+                  <div class="fw-semibold text-truncate" style="font-size:.88rem;">[[ pullConnector.instance_url ]]</div>
+                  <div class="d-flex flex-wrap gap-3 mt-1" style="font-size:.78rem;color:var(--subtle-text-color);">
+                     <span><i class="fa-solid fa-shield-halved me-1 text-primary"></i>[[ (pullConnector.rules_count ?? '?').toLocaleString() ]] rules</span>
+                     <span><i class="fa-solid fa-box me-1 text-secondary"></i>[[ pullConnector.bundles_count ?? '?' ]] bundles</span>
+                     <span v-if="pullConnector.last_sync_at"><i class="fa-solid fa-rotate me-1"></i>Last sync: [[ pullConnector.last_sync_at ]]</span>
+                     <span v-if="pullConnector.last_error" class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i>[[ pullConnector.last_error ]]</span>
+                  </div>
+               </div>
+            </div>
+
+            <!-- Sync mode -->
+            <div class="mb-4">
+               <div class="connector-form-label fw-semibold mb-2">Sync mode</div>
+               <div class="d-flex flex-column gap-2">
+
+                  <label class="pull-mode-card" :class="pullForm.mode === 'soft' ? 'pull-mode-card--active pull-mode-card--soft' : ''">
+                     <div class="d-flex align-items-start gap-3">
+                        <input type="radio" value="soft" v-model="pullForm.mode" class="mt-1 flex-shrink-0">
+                        <div>
+                           <div class="d-flex align-items-center gap-2 mb-1">
+                              <i class="fa-solid fa-feather text-success"></i>
+                              <strong>Soft pull</strong>
+                              <span class="badge bg-success" style="font-size:.58rem;">Recommended</span>
+                           </div>
+                           <p class="text-muted mb-0" style="font-size:.8rem;line-height:1.5;">
+                              Imports only rules that don't exist locally, checked by UUID then by content.
+                              Existing rules, edits, and history are never touched.
+                           </p>
+                        </div>
+                     </div>
+                  </label>
+
+                  <label class="pull-mode-card" :class="pullForm.mode === 'hard' ? 'pull-mode-card--active pull-mode-card--hard' : ''">
+                     <div class="d-flex align-items-start gap-3">
+                        <input type="radio" value="hard" v-model="pullForm.mode" class="mt-1 flex-shrink-0">
+                        <div>
+                           <div class="d-flex align-items-center gap-2 mb-1">
+                              <i class="fa-solid fa-bolt text-warning"></i>
+                              <strong>Hard pull</strong>
+                              <span class="badge bg-warning text-dark" style="font-size:.58rem;">Overwrites</span>
+                           </div>
+                           <p class="text-muted mb-0" style="font-size:.8rem;line-height:1.5;">
+                              If a matching local rule is found (by UUID or content), it is moved to trash
+                              and replaced by the remote version. Update history is preserved and transferred.
+                           </p>
+                        </div>
+                     </div>
+                  </label>
+
+               </div>
+            </div>
+
+            <!-- Filters -->
+            <connector-pull-filter ref="pullFilterRef" @filter="onFilterChange"></connector-pull-filter>
+
+         </div>
+
+         <div class="modal-footer border-top d-flex justify-content-between align-items-center">
+            <div v-if="pullConnector" class="text-muted" style="font-size:.78rem;">
+               <i class="fa-solid fa-circle-info me-1"></i>
+               Pulling from <strong>[[ pullConnector.name ]]</strong>
+            </div>
+            <div class="d-flex gap-2">
+               <button class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+               <button class="btn rounded-pill px-4"
+                       :class="pullForm.mode === 'hard' ? 'btn-warning' : 'btn-success'"
+                       @click="submitPull" :disabled="pullBusy">
+                  <span v-if="pullBusy" class="spinner-border spinner-border-sm me-1"></span>
+                  <i v-else :class="pullForm.mode === 'hard' ? 'fa-solid fa-bolt' : 'fa-solid fa-feather'" class="me-1"></i>
+                  [[ pullForm.mode === 'hard' ? 'Hard pull' : 'Soft pull' ]]
+               </button>
+            </div>
+         </div>
+
+      </div>
+   </div>
+</div>
+
 </div><!-- /connector-app -->
 {% endblock %}
 
 {% block script %}
 <script type="module">
-import ConnectorTable from '/static/js/connector/connectorTable.js'
-import { create_message } from '/static/js/toaster.js'
+import ConnectorTable      from '/static/js/connector/connectorTable.js'
+import ConnectorPullFilter from '/static/js/connector/connectorPullFilter.js'
+import { create_message }  from '/static/js/toaster.js'
 
 const { createApp, ref, reactive, onMounted } = Vue
 
@@ -253,9 +357,13 @@ const ICON_OPTIONS = [
    { cls: 'fa-solid fa-lock',          label: 'Lock' },
 ]
 
+
 createApp({
    delimiters: ['[[', ']]'],
-   components: { 'connector-table': ConnectorTable },
+   components: {
+      'connector-table':       ConnectorTable,
+      'connector-pull-filter': ConnectorPullFilter,
+   },
    setup() {
       const rulezetTable = ref(null)
       const otherTable   = ref(null)
@@ -273,11 +381,23 @@ createApp({
          is_active: true, owner_mode: 'shadow',
       })
 
-      let bsModal
+      // Pull modal state
+      const pullConnector = ref(null)
+      const pullForm      = reactive({ mode: 'soft' })
+      const pullBusy      = ref(false)
+      const pullFilterRef = ref(null)
+      const pullFilters   = ref({})
+
+      function onFilterChange(f) { pullFilters.value = f }
+
+      let bsModal, bsPullModal
 
       onMounted(() => {
          const Modal = window.bootstrap?.Modal
-         if (Modal) bsModal = new Modal(document.getElementById('connectorModal'))
+         if (Modal) {
+            bsModal     = new Modal(document.getElementById('connectorModal'))
+            bsPullModal = new Modal(document.getElementById('pullModal'))
+         }
       })
 
       function resetForm(type = 'rulezet') {
@@ -343,11 +463,40 @@ createApp({
          finally { saving.value = false }
       }
 
+      function openPullModal(c) {
+         pullConnector.value = c
+         pullForm.mode = 'soft'
+         bsPullModal?.show()
+      }
+
+      async function submitPull() {
+         if (!pullConnector.value) return
+         pullBusy.value = true
+         try {
+            const filters = pullFilterRef.value?.getFilter?.() || pullFilters.value || {}
+            const res  = await fetch(`/connector/pull/${pullConnector.value.uuid}`, {
+               method:  'POST',
+               headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+               body:    JSON.stringify({ mode: pullForm.mode, filters }),
+            })
+            const data = await res.json()
+            bsPullModal?.hide()
+            const label = pullForm.mode === 'hard' ? 'Hard' : 'Soft'
+            create_message(
+               data.success ? `${label} pull queued as background job.` : (data.error || 'Error queuing pull.'),
+               data.success ? 'success' : 'danger'
+            )
+         } catch { create_message('Network error — pull not queued.', 'danger') }
+         finally { pullBusy.value = false }
+      }
+
       return {
          IS_ADMIN, CSRF, ICON_OPTIONS,
          rulezetTable, otherTable,
          saving, editMode, form, formError,
          openCreate, openEdit, saveConnector,
+         pullConnector, pullForm, pullBusy, pullFilterRef,
+         onFilterChange, openPullModal, submitPull,
       }
    }
 }).mount('#connector-app')

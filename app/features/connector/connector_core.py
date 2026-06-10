@@ -168,6 +168,12 @@ def test_connector(connector: Connector) -> tuple[bool, str, dict]:
         headers['X-API-KEY'] = connector.api_key_outbound
     try:
         resp = http_requests.get(f"{base}/api/sync/manifest", headers=headers, timeout=8)
+        if resp.status_code == 404:
+            msg = ("Sync API not found (HTTP 404). The remote instance may be running an older version "
+                   "of Rulezet that does not support federation sync.")
+            connector.last_error = msg
+            db.session.commit()
+            return False, msg, {}
         if resp.status_code != 200:
             msg = f"Remote returned HTTP {resp.status_code}."
             connector.last_error = msg
@@ -188,6 +194,10 @@ def test_connector(connector: Connector) -> tuple[bool, str, dict]:
 
         connector.is_verified = True
         connector.last_error  = None
+        if stats.get('rules') is not None:
+            connector.remote_rules_count   = stats['rules']
+        if stats.get('bundles') is not None:
+            connector.remote_bundles_count = stats['bundles']
         db.session.commit()
 
         stats_str = ''
