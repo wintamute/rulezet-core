@@ -70,6 +70,18 @@ gunicorn -w 4 wsgi:app
 
 Secrets live in `.env` (`SECRET_KEY`, `MAIL_PASSWORD`). The app runs on `127.0.0.1:7009` by default.
 
+### Additional `.env` variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FLASK_URL` | `127.0.0.1` | Host the app binds to |
+| `FLASK_PORT` | `7009` | Port the app listens on |
+| `INSTANCE_PUBLIC_URL` | *(none)* | Public-facing URL reported in telemetry (e.g. `https://myinstance.example.com`). If unset, `http://FLASK_URL:FLASK_PORT` is used. |
+| `IS_OFFICIAL_INSTANCE` | `false` | **Set to `true` only on rulezet.org.** Enables the Instance Registry admin page and makes `/api/instance/register` accept incoming pings. All other instances return 404 on that endpoint. |
+| `TELEMETRY_URL` | `https://rulezet.org/api/instance/register` | Override ping destination (for local testing only — remove in production). |
+| `TELEMETRY_STARTUP_DELAY` | `90` | Seconds to wait after boot before first ping. |
+| `TELEMETRY_INTERVAL` | `86400` | Seconds between pings (default 24 h). |
+
 ---
 
 ## Architecture
@@ -516,6 +528,71 @@ Dark mode overrides (section 17-18 of core.css) cover: `.text-muted`, `.table-li
 #### Sidebar navigation (`app/templates/sidebar.html`)
 
 The trash icon linking to `/rule/trash` is shown only to admins or rule moderators.
+
+### Instance Registry (phone-home system)
+
+Every Rulezet instance automatically identifies itself and reports its existence to rulezet.org. This gives the community a live map of all running instances.
+
+#### How it works
+
+1. **On first boot** — `_init_instance_config()` (called from `create_app()`) generates a persistent UUID and stores it in `InstanceConfig` (single-row table). Never regenerated.
+2. **90 seconds after boot** — `_start_telemetry()` launches a daemon thread that POSTs to `https://rulezet.org/api/instance/register`. Repeats every 24 h.
+3. **rulezet.org** receives the ping, upserts a `RegisteredInstance` row, and shows all instances in the admin page `/account/admin/instances`.
+
+#### Ping payload
+
+```json
+{
+  "uuid":          "<endpoint_uuid>",
+  "url":           "<reported_url>",
+  "version":       "1.5.0",
+  "rules_count":   42,
+  "bundles_count": 3
+}
+```
+
+`endpoint_uuid` is derived as `uuid5(base_uuid, reported_url)` — two processes sharing the same DB but on different ports get different endpoint UUIDs and appear as distinct rows.
+
+`reported_url` = `INSTANCE_PUBLIC_URL` if set, otherwise `http://FLASK_URL:FLASK_PORT`.
+
+#### Security
+
+- `/api/instance/register` returns **404** on any instance where `IS_OFFICIAL_INSTANCE=false` (the default). Only rulezet.org accepts pings.
+- The ping destination is hardcoded to `https://rulezet.org` — protected by TLS. Nobody else can intercept pings without controlling that domain.
+- Even if someone forks the repo and sets `IS_OFFICIAL_INSTANCE=true` on their instance, their endpoint still rejects incoming registrations (404), and community instances still ping rulezet.org via TLS — not them.
+
+#### Models (`db.py`)
+
+| Model | Description |
+|-------|-------------|
+| `InstanceConfig` | Single-row: this instance's `uuid`, `telemetry_enabled`, `public_url` |
+| `RegisteredInstance` | One row per remote instance that has phoned home: `uuid`, `public_url`, `version`, `rules_count`, `bundles_count`, `ping_count`, `first_seen`, `last_seen` |
+
+#### Files
+
+| File | Role |
+|------|------|
+| `app/__init__.py` | `_init_instance_config()` + `_start_telemetry()` called in `create_app()` |
+| `app/api/instance/instance_api.py` | `POST /api/instance/register` — upserts `RegisteredInstance`, rate-limited to 1 update/hour/UUID, requires `IS_OFFICIAL_INSTANCE=true` |
+| `app/features/account/account.py` | `GET /account/admin/instances` — admin-only, requires `IS_OFFICIAL_INSTANCE=true` |
+| `app/templates/admin/instances.html` | Admin table with Active/Stale/Offline status badges |
+
+#### Opt-out
+
+Any instance admin can disable telemetry by setting `telemetry_enabled = False` on the `InstanceConfig` row in the database. No pings will be sent.
+
+#### Production setup (rulezet.org only)
+
+Add to `.env` on the rulezet.org server — **do not add these to any other instance**:
+
+```
+IS_OFFICIAL_INSTANCE=true
+INSTANCE_PUBLIC_URL=https://rulezet.org
+```
+
+Remove any `TELEMETRY_URL`, `TELEMETRY_STARTUP_DELAY`, `TELEMETRY_INTERVAL` overrides (those are for local testing only).
+
+---
 
 ### Tests (`tests/`)
 
