@@ -102,28 +102,34 @@ def create_app(start_worker=True):
 
 
 def _init_instance_config(app):
-    """Create or refresh the single InstanceConfig row on every boot."""
+    """Create or refresh the single InstanceConfig row on every boot.
+
+    cfg.uuid is the stable registry UUID — uuid5(NAMESPACE_URL, reported_url).
+    It matches the UUID sent in telemetry pings and shown in RegisteredInstance.
+    """
     import uuid as _uuid_mod
     import datetime
     from app.core.db_class.db import InstanceConfig
     with app.app_context():
         try:
             cfg = InstanceConfig.query.first()
+            reported_url = (
+                app.config.get('INSTANCE_PUBLIC_URL') or
+                f"http://{app.config.get('FLASK_URL', '127.0.0.1')}"
+                f":{app.config.get('FLASK_PORT', 7009)}"
+            )
+            stable_uuid = str(_uuid_mod.uuid5(_uuid_mod.NAMESPACE_URL, reported_url))
             if not cfg:
                 cfg = InstanceConfig(
-                    uuid              = str(_uuid_mod.uuid4()),
+                    uuid              = stable_uuid,
                     telemetry_enabled = True,
                     public_url        = app.config.get('INSTANCE_PUBLIC_URL'),
                 )
                 db.session.add(cfg)
                 db.session.flush()
-
-            # Compute the stable endpoint UUID from the reported URL
-            reported_url = cfg.public_url or (
-                f"http://{app.config.get('FLASK_URL', '127.0.0.1')}"
-                f":{app.config.get('FLASK_PORT', 7009)}"
-            )
-            cfg.endpoint_uuid   = str(_uuid_mod.uuid5(_uuid_mod.NAMESPACE_URL, reported_url))
+            else:
+                cfg.uuid       = stable_uuid
+                cfg.public_url = app.config.get('INSTANCE_PUBLIC_URL') or cfg.public_url
             cfg.version         = app.config.get('APP_VERSION', 'unknown')
             cfg.last_started_at = datetime.datetime.utcnow()
             db.session.commit()
@@ -150,19 +156,15 @@ def _start_telemetry(app):
                 with app.app_context():
                     cfg = InstanceConfig.query.first()
                     if cfg and cfg.telemetry_enabled:
-                        # Prefer manually configured URL; fall back to Flask host:port
                         reported_url = cfg.public_url or (
                             f"http://{app.config.get('FLASK_URL', '127.0.0.1')}"
                             f":{app.config.get('FLASK_PORT', 7009)}"
                         )
-                        # Derive a deterministic UUID from the URL alone.
-                        # uuid5(NAMESPACE_URL, url) is stable across DB resets and
-                        # distinct for each host:port combination.
-                        endpoint_uuid = str(_uuid_mod.uuid5(
-                            _uuid_mod.NAMESPACE_URL, reported_url
-                        ))
+                        # Always recompute from URL — never trust in-memory cfg.uuid
+                        # which may be stale if the code was updated without restarting.
+                        ping_uuid = str(_uuid_mod.uuid5(_uuid_mod.NAMESPACE_URL, reported_url))
                         _req.post(PING_URL, json={
-                            'uuid':          endpoint_uuid,
+                            'uuid':          ping_uuid,
                             'url':           reported_url,
                             'version':       app.config.get('APP_VERSION', 'unknown'),
                             'rules_count':   Rule.query.filter_by(is_deleted=False).count(),

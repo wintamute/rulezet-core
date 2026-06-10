@@ -1936,7 +1936,6 @@ class InstanceConfig(db.Model):
     __tablename__ = 'instance_config'
     id                = db.Column(db.Integer, primary_key=True)
     uuid              = db.Column(db.String(36), unique=True, nullable=False)
-    endpoint_uuid     = db.Column(db.String(36), nullable=True, index=True)
     telemetry_enabled = db.Column(db.Boolean, default=True, nullable=False)
     public_url        = db.Column(db.String(512), nullable=True)
     version           = db.Column(db.String(64), nullable=True)
@@ -1946,7 +1945,6 @@ class InstanceConfig(db.Model):
     def to_json(self):
         return {
             'uuid':              self.uuid,
-            'endpoint_uuid':     self.endpoint_uuid,
             'telemetry_enabled': self.telemetry_enabled,
             'public_url':        self.public_url,
             'version':           self.version,

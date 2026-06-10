@@ -740,17 +740,16 @@ def admin_settings_instance():
         f":{current_app.config.get('FLASK_PORT', 7009)}"
     )
     return jsonify({
-        'exists':           True,
-        'uuid':             cfg.uuid,
-        'endpoint_uuid':    cfg.endpoint_uuid,
+        'exists':            True,
+        'endpoint_uuid':     cfg.uuid,
         'telemetry_enabled': cfg.telemetry_enabled,
-        'public_url':       cfg.public_url,
-        'reported_url':     reported_url,
-        'version':          cfg.version,
-        'last_started_at':  cfg.last_started_at.strftime('%Y-%m-%d %H:%M:%S') if cfg.last_started_at else None,
-        'created_at':       cfg.created_at.strftime('%Y-%m-%d %H:%M:%S') if cfg.created_at else None,
-        'is_official':      current_app.config.get('IS_OFFICIAL_INSTANCE', False),
-        'telemetry_url':    'https://rulezet.org/api/instance/register',
+        'public_url':        cfg.public_url,
+        'reported_url':      reported_url,
+        'version':           cfg.version,
+        'last_started_at':   cfg.last_started_at.strftime('%Y-%m-%d %H:%M:%S') if cfg.last_started_at else None,
+        'created_at':        cfg.created_at.strftime('%Y-%m-%d %H:%M:%S') if cfg.created_at else None,
+        'is_official':       current_app.config.get('IS_OFFICIAL_INSTANCE', False),
+        'telemetry_url':     'https://rulezet.org/api/instance/register',
     })
 
 
@@ -780,15 +779,15 @@ def admin_settings_instance_init():
         f"http://{current_app.config.get('FLASK_URL', '127.0.0.1')}"
         f":{current_app.config.get('FLASK_PORT', 7009)}"
     )
-    cfg.endpoint_uuid   = str(_uuid_mod.uuid5(_uuid_mod.NAMESPACE_URL, reported_url))
+    cfg.uuid            = str(_uuid_mod.uuid5(_uuid_mod.NAMESPACE_URL, reported_url))
     cfg.version         = current_app.config.get('APP_VERSION', 'unknown')
     cfg.last_started_at = _dt.datetime.utcnow()
     db.session.commit()
     log_activity('admin.instance_init', 'Instance config initialized/refreshed from admin settings')
     return jsonify({
-        'success':       True,
-        'endpoint_uuid': cfg.endpoint_uuid,
-        'version':       cfg.version,
+        'success':         True,
+        'endpoint_uuid':   cfg.uuid,
+        'version':         cfg.version,
         'last_started_at': cfg.last_started_at.strftime('%Y-%m-%d %H:%M:%S'),
     })
 
