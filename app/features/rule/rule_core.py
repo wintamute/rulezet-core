@@ -2681,15 +2681,16 @@ def accept_rule_change(history_id):
         return False
     
 def get_all_pending_changes():
+    base = [
+        RuleUpdateHistory.message != "accepted",
+        RuleUpdateHistory.message != "rejected",
+        RuleUpdateHistory.manuel_submit != True,   # already-applied entries (connector pull etc.)
+    ]
     if current_user.is_admin():
-        return RuleUpdateHistory.query.filter(
-            RuleUpdateHistory.message != "accepted",
-            RuleUpdateHistory.message != "rejected"
-        ).all()
+        return RuleUpdateHistory.query.filter(*base).all()
     else:
         return RuleUpdateHistory.query.filter(
-            RuleUpdateHistory.message != "accepted",
-            RuleUpdateHistory.message != "rejected",
+            *base,
             RuleUpdateHistory.analyzed_by_user_id == current_user.id
         ).all()
 

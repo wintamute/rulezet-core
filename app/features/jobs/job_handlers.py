@@ -830,7 +830,6 @@ def handle_connector_pull(job, app):
 
     payload      = job.payload or {}
     connector_id = payload.get('connector_id')
-    mode         = payload.get('mode', 'soft')
     job_uuid     = job.uuid
     t_start      = _time.monotonic()
 
@@ -860,7 +859,7 @@ def handle_connector_pull(job, app):
         base     = connector.instance_url.rstrip('/')
         PER_PAGE = 500
 
-        log_job(job, f"Starting {mode} pull from {base} (since {since[:10]})", level='info', event='started')
+        log_job(job, f"Starting pull from {base}", level='info', event='started')
 
         # ── Manifest preflight: verify remote supports sync API ────────────────
         try:
@@ -955,7 +954,7 @@ def handle_connector_pull(job, app):
                     pg_created = pg_updated = pg_skipped = 0
                     for item in items:
                         try:
-                            result = _upsert_rule(connector, effective_user_id, item, mode=mode, triggered_by_id=job.created_by, missing_tags=all_missing_tags)
+                            result = _upsert_rule(connector, effective_user_id, item, triggered_by_id=job.created_by, missing_tags=all_missing_tags)
                             if result == 'created':
                                 rules_created += 1; pg_created += 1
                             elif result == 'updated':
@@ -1008,7 +1007,7 @@ def handle_connector_pull(job, app):
                         break  # empty page — remote lied about has_more
                     for item in items:
                         try:
-                            result = _upsert_bundle(connector, effective_user_id, item, mode=mode, triggered_by_id=job.created_by)
+                            result = _upsert_bundle(connector, effective_user_id, item, triggered_by_id=job.created_by)
                             if result == 'created':
                                 bundles_created += 1
                             elif result == 'updated':
@@ -1050,7 +1049,7 @@ def handle_connector_pull(job, app):
         db.session.commit()
 
         summary = (
-            f"Pull [{mode}] done in {duration}s — "
+            f"Pull done in {duration}s — "
             f"rules: +{rules_created} new, ~{rules_updated} updated, "
             f"={rules_skipped} skipped, {rules_errors} errors | "
             f"bundles: +{bundles_created} new, ~{bundles_updated} updated, ={bundles_skipped} skipped."
@@ -1066,7 +1065,6 @@ def handle_connector_pull(job, app):
                      target_type='connector', target_id=connector.id,
                      target_uuid=connector.uuid,
                      extra={
-                         'mode':                mode,
                          'rules_added':         rules_created,
                          'rules_updated':       rules_updated,
                          'rules_skipped':       rules_skipped,

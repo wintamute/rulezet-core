@@ -406,9 +406,6 @@ const ConnectorRow = {
               </div>
               <div class="cnt-timeline-desc">[[ e.description ]]</div>
               <div v-if="e.extra && e.extra.rules_added !== undefined" class="cnt-timeline-meta">
-                <span v-if="e.extra.mode" :class="['badge', 'me-1', e.extra.mode==='hard' ? 'bg-warning text-dark' : 'bg-success']" style="font-size:.58rem;">
-                  <i :class="e.extra.mode==='hard' ? 'fa-solid fa-bolt' : 'fa-solid fa-feather'" class="me-1"></i>[[ e.extra.mode ]]
-                </span>
                 <span title="Rules added"><i class="fa-solid fa-shield-halved me-1 text-primary"></i>+[[ e.extra.rules_added ]]</span>
                 <span v-if="e.extra.rules_skipped" title="Rules skipped"><i class="fa-solid fa-forward me-1 text-secondary"></i>=[[ e.extra.rules_skipped ]]</span>
                 <span title="Bundles added"><i class="fa-solid fa-box me-1 text-secondary"></i>+[[ e.extra.bundles_added ]]</span>
@@ -878,7 +875,7 @@ export default {
             bulkBusy.value = false
         }
 
-        async function bulkPull(mode = 'soft') {
+        async function bulkPull() {
             if (!props.isAdmin) return
             bulkBusy.value = true
             const connectors = paginated.value.filter(c => selectedUuids.has(c.uuid) && !c.is_self)
@@ -888,7 +885,6 @@ export default {
                     const r = await fetch(`/connector/pull/${c.uuid}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken },
-                        body: JSON.stringify({ mode }),
                     })
                     const d = await r.json()
                     if (d.success) queued++
@@ -897,7 +893,7 @@ export default {
             const skipped = selectedUuids.size - connectors.length
             const note = skipped > 0 ? ` (${skipped} skipped — self)` : ''
             if (queued > 0) window.dispatchEvent(new Event('rz:job-created'))
-            create_message(`${queued} pull job(s) queued [${mode}]${note}.`, 'success')
+            create_message(`${queued} pull job(s) queued${note}.`, 'success')
             clearSelection()
             bulkBusy.value = false
         }
@@ -1055,19 +1051,9 @@ export default {
         <button class="cnt-bulk-btn" @click="bulkTest" :disabled="bulkBusy">
           <i class="fa-solid fa-wifi me-1"></i>Test all
         </button>
-        <div v-if="isAdmin" class="btn-group">
-          <button class="cnt-bulk-btn cnt-bulk-btn--success" @click="bulkPull('soft')" :disabled="bulkBusy">
-            <i class="fa-solid fa-cloud-arrow-down me-1"></i>Pull all
-          </button>
-          <button class="cnt-bulk-btn cnt-bulk-btn--success" style="padding:0 6px;border-left:1px solid rgba(255,255,255,.25);"
-                  :disabled="bulkBusy" v-dropdown-fixed data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fa-solid fa-chevron-down" style="font-size:.6rem;"></i>
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end" style="min-width:180px;font-size:.82rem;">
-            <li><button class="dropdown-item" @click="bulkPull('soft')"><i class="fa-solid fa-feather me-2 text-success"></i>Soft pull all</button></li>
-            <li><button class="dropdown-item" @click="bulkPull('hard')"><i class="fa-solid fa-bolt me-2 text-warning"></i>Hard pull all</button></li>
-          </ul>
-        </div>
+        <button v-if="isAdmin" class="cnt-bulk-btn cnt-bulk-btn--success" @click="bulkPull" :disabled="bulkBusy">
+          <i class="fa-solid fa-cloud-arrow-down me-1"></i>Pull all
+        </button>
         <button class="cnt-bulk-btn cnt-bulk-btn--danger" @click="bulkDelete" :disabled="bulkBusy">
           <i class="fa-solid fa-trash me-1"></i>Delete
         </button>

@@ -285,50 +285,35 @@ def seed_official_connector() -> None:
         db.session.rollback()
 
 
-def trigger_pull(connector: Connector, triggered_by: int, mode: str = 'soft') -> object | None:
-    """Enqueue a connector_pull background job and return the job object.
-
-    mode:
-        'soft' — add only new rules/bundles, skip any that already exist locally
-        'hard' — add new + overwrite existing if the remote version is newer
-    """
+def trigger_pull(connector: Connector, triggered_by: int) -> object | None:
+    """Enqueue a connector_pull background job and return the job object."""
     if not connector.is_active:
         return None
-    if mode not in ('soft', 'hard'):
-        mode = 'soft'
-    label = f"Pull [{mode}] from '{connector.name}'"
     job = create_job(
         job_type='connector_pull',
-        payload={'connector_id': connector.id, 'mode': mode},
-        label=label,
+        payload={'connector_id': connector.id},
+        label=f"Pull from '{connector.name}'",
         created_by=triggered_by,
     )
     log_activity('connector.pull_triggered',
-                 f"Pull queued for connector '{connector.name}' (mode: {mode})",
+                 f"Pull queued for connector '{connector.name}'",
                  target_type='connector', target_id=connector.id,
                  target_uuid=connector.uuid,
-                 extra={'job_uuid': job.uuid if job else None, 'mode': mode})
+                 extra={'job_uuid': job.uuid if job else None})
     return job
 
 
 # ─── Sync helpers (called from job handler) ───────────────────────────────────
 
 def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
-                 mode: str = 'soft', triggered_by_id: int = None,
+                 triggered_by_id: int = None,
                  missing_tags: set = None) -> str:
-    """
-    Matching is by UUID only (remote canonical uuid vs local remote_rule_uuid
-    or uuid) — content is never compared.
+    """UUID-based upsert: match → update in place with history; no match → create.
 
-    soft: local match (even in trash) → skip. No match → create.
-
-    hard: local match → if the remote version differs, import it over the
-          local rule in place. A content (to_string) change is archived first
-          in RuleUpdateHistory (old_content = local, new_content = remote);
-          metadata-only changes (title, description, …) are applied without
-          a history entry. A match found in the trash is restored. Identical
-          active rule → skip.
-          No match → create + import remote history.
+    - Trashed rules are restored on match.
+    - Content changes are archived in RuleUpdateHistory (already-applied,
+      marked manuel_submit=True so they never appear as pending proposals).
+    - Tags and CVEs are always synced on every pull.
 
     Returns: 'created' | 'updated' | 'skipped' | 'invalid'
     """
@@ -336,29 +321,16 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
     if not remote_uuid:
         return 'invalid'
 
-    owner_id = triggered_by_id if (mode == 'hard' and triggered_by_id) else shadow_user_id
+    owner_id = triggered_by_id if triggered_by_id else shadow_user_id
     now      = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
-    # ── Find local match by uuid only ─────────────────────────────────────────
     # Rule.uuid is also checked so a rule that originated here and comes back
-    # from a remote instance is recognised instead of duplicated. Trashed rules
-    # are matched too (active ones first) so a hard pull can restore them and
-    # a soft pull does not recreate a rule the local admin deleted.
+    # from a remote instance is recognised instead of duplicated.
     local_match = Rule.query.filter(
         or_(Rule.remote_rule_uuid == remote_uuid, Rule.uuid == remote_uuid),
     ).order_by(Rule.is_deleted.asc()).first()
 
     if local_match:
-        # ── Soft mode: keep local content, but sync tags and CVEs from remote ──
-        if mode == 'soft':
-            if not local_match.is_deleted:
-                missed = _sync_tags(local_match, remote.get('tags', []), owner_id)
-                if missing_tags is not None:
-                    missing_tags.update(missed)
-                _sync_cve_ids(local_match, remote.get('cve_ids', []))
-            return 'skipped'
-
-        # ── Hard mode: import the remote version over the local rule ─────────
         restored = False
         if local_match.is_deleted:
             local_match.is_deleted        = False
@@ -371,7 +343,9 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
         content_changed = (local_match.to_string or '') != new_content
 
         if content_changed:
-            # Archive the version being overwritten before touching it
+            # Archive the version being overwritten.
+            # manuel_submit=True marks this as already applied — it must not
+            # appear in the pending-changes queue.
             db.session.add(RuleUpdateHistory(
                 rule_id=local_match.id,
                 rule_title=local_match.title,
@@ -381,7 +355,7 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
                 new_content=new_content,
                 analyzed_by_user_id=owner_id,
                 analyzed_at=now,
-                manuel_submit=False,
+                manuel_submit=True,
             ))
             local_match.to_string = new_content
 
@@ -737,17 +711,17 @@ def _sync_bundle_rules(bundle: Bundle, rule_uuids: list) -> int:
 
 
 def _upsert_bundle(connector: Connector, shadow_user_id: int, remote: dict,
-                   mode: str = 'soft', triggered_by_id: int = None) -> str:
+                   triggered_by_id: int = None) -> str:
     """Create or update a Bundle from a remote payload dict, then attach the
     local rules listed in remote['rules'] (rules are pulled before bundles,
     so they already exist locally when sync_rules is enabled).
-    Returns 'created', 'updated', 'skipped', 'unchanged', or 'invalid'.
+    Returns 'created', 'updated', 'skipped', or 'invalid'.
     """
     remote_uuid = remote.get('uuid')
     if not remote_uuid:
         return 'invalid'
 
-    owner_id = triggered_by_id if (mode == 'hard' and triggered_by_id) else shadow_user_id
+    owner_id = triggered_by_id if triggered_by_id else shadow_user_id
 
     existing = Bundle.query.filter_by(
         connector_id=connector.id,
@@ -757,26 +731,23 @@ def _upsert_bundle(connector: Connector, shadow_user_id: int, remote: dict,
     now = datetime.datetime.now(datetime.timezone.utc)
 
     if existing:
-        # Always repair membership, tags and CVEs — even when bundle is untouched
         added = _sync_bundle_rules(existing, remote.get('rules', []))
         _sync_bundle_tags(existing, remote.get('tags', []), owner_id)
         _sync_cve_ids(existing, remote.get('vulnerability_identifiers', []))
-        if mode == 'soft':
-            return 'updated' if added else 'skipped'
         remote_ts = remote.get('updated_at')
+        changed = False
         if remote_ts and existing.updated_at:
             try:
                 remote_dt = datetime.datetime.fromisoformat(remote_ts.replace('Z', '+00:00')).replace(tzinfo=None)
-                if remote_dt <= existing.updated_at:
-                    return 'updated' if added else 'unchanged'
+                if remote_dt > existing.updated_at:
+                    existing.name        = remote.get('name', existing.name)
+                    existing.description = remote.get('description', existing.description)
+                    existing.user_id     = owner_id
+                    existing.updated_at  = now
+                    changed = True
             except ValueError:
                 pass
-        # Only update content fields, keep metadata
-        existing.name        = remote.get('name', existing.name)
-        existing.description = remote.get('description', existing.description)
-        existing.user_id     = owner_id
-        existing.updated_at  = now
-        return 'updated'
+        return 'updated' if (added or changed) else 'skipped'
 
     bundle = Bundle(
         uuid=str(uuid_mod.uuid4()),

@@ -100,31 +100,32 @@ def test_shadow_user_not_verified(app, connector):
         assert shadow.is_verified is False
 
 
-# ── _upsert_rule — soft mode ──────────────────────────────────────────────────
+# ── _upsert_rule ──────────────────────────────────────────────────────────────
 
-def test_soft_upsert_creates_new_rule(app, connector):
+def test_upsert_creates_new_rule(app, connector):
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Brand New Rule")
-        result = core._upsert_rule(c, shadow.id, remote, mode="soft")
+        result = core._upsert_rule(c, shadow.id, remote)
         assert result == "created"
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         assert rule is not None
         assert rule.title == "Brand New Rule"
 
 
-def test_soft_upsert_skips_existing_by_uuid(app, connector):
+def test_upsert_skips_identical_existing_rule(app, connector):
+    """Re-pulling an unchanged rule returns skipped."""
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Existing Rule")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
-        result = core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
+        result = core._upsert_rule(c, shadow.id, remote)
         assert result == "skipped"
 
 
-def test_soft_upsert_matches_by_uuid_only_not_content(app, connector):
+def test_upsert_matches_by_uuid_only_not_content(app, connector):
     """Two rules with identical content but different uuids are distinct."""
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
@@ -132,99 +133,78 @@ def test_soft_upsert_matches_by_uuid_only_not_content(app, connector):
         content = "rule same_content { condition: true }"
         remote1 = _remote_rule(title="Original", to_string=content)
         remote2 = _remote_rule(title="Duplicate Content", to_string=content)
-        core._upsert_rule(c, shadow.id, remote1, mode="soft")
-        result = core._upsert_rule(c, shadow.id, remote2, mode="soft")
+        core._upsert_rule(c, shadow.id, remote1)
+        result = core._upsert_rule(c, shadow.id, remote2)
         assert result == "created"
 
 
-def test_soft_upsert_invalid_without_uuid(app, connector):
+def test_upsert_invalid_without_uuid(app, connector):
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule()
         remote["uuid"] = None
-        result = core._upsert_rule(c, shadow.id, remote, mode="soft")
+        result = core._upsert_rule(c, shadow.id, remote)
         assert result == "invalid"
 
 
-def test_soft_upsert_sets_connector_id(app, connector):
+def test_upsert_sets_connector_id(app, connector):
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Connector Tag Test")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         assert rule.connector_id == c.id
 
 
-def test_soft_upsert_preserves_source(app, connector):
+def test_upsert_preserves_source(app, connector):
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Source Test")
         remote["source"] = "https://github.com/original/source"
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         # Source from remote must be preserved, not overwritten with connector URL
         assert rule.source == "https://github.com/original/source"
         assert rule.sync_instance_url == c.instance_url
 
 
-def test_soft_upsert_shadow_owner(app, connector):
+def test_upsert_shadow_owner(app, connector):
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Shadow Owner Test")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         assert rule.user_id == shadow.id
 
 
-# ── _upsert_rule — hard mode ──────────────────────────────────────────────────
-
-def test_hard_upsert_creates_when_no_match(app, connector):
-    with app.app_context():
-        c = Connector.query.filter_by(uuid=connector.uuid).first()
-        shadow = core._get_or_create_shadow_user(c)
-        remote = _remote_rule(title="Hard New Rule")
-        result = core._upsert_rule(c, shadow.id, remote, mode="hard")
-        assert result == "created"
-
-
-def test_hard_upsert_returns_updated_when_content_changed(app, connector):
+def test_upsert_returns_updated_when_content_changed(app, connector):
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Will Be Updated")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         remote["to_string"] = "rule r { condition: false }"
-        result = core._upsert_rule(c, shadow.id, remote, mode="hard")
+        result = core._upsert_rule(c, shadow.id, remote)
         assert result == "updated"
 
 
-def test_hard_upsert_skips_identical_content(app, connector):
-    with app.app_context():
-        c = Connector.query.filter_by(uuid=connector.uuid).first()
-        shadow = core._get_or_create_shadow_user(c)
-        remote = _remote_rule(title="Same Version")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
-        result = core._upsert_rule(c, shadow.id, remote, mode="hard")
-        assert result == "skipped"
-
-
-def test_hard_upsert_updates_in_place(app, connector):
+def test_upsert_updates_in_place(app, connector):
     """The local rule keeps its id — it is updated, not deleted/recreated."""
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Old Version")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         old_rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         old_id = old_rule.id
 
         remote["title"] = "New Version"
         remote["to_string"] = "rule r { condition: false }"
-        core._upsert_rule(c, shadow.id, remote, mode="hard")
+        core._upsert_rule(c, shadow.id, remote)
 
         rule = Rule.query.get(old_id)
         assert rule.is_deleted is False
@@ -233,19 +213,19 @@ def test_hard_upsert_updates_in_place(app, connector):
         assert Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).count() == 1
 
 
-def test_hard_upsert_metadata_only_change_updates_without_history(app, connector):
+def test_upsert_metadata_only_change_updates_without_history(app, connector):
     """Title/description changes are imported, but only content changes
     create a RuleUpdateHistory entry."""
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Meta Rule")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         rule_id = rule.id
 
         remote["title"] = "Meta Rule Renamed"
-        result = core._upsert_rule(c, shadow.id, remote, mode="hard")
+        result = core._upsert_rule(c, shadow.id, remote)
         assert result == "updated"
 
         rule = Rule.query.get(rule_id)
@@ -253,7 +233,7 @@ def test_hard_upsert_metadata_only_change_updates_without_history(app, connector
         assert RuleUpdateHistory.query.filter_by(rule_id=rule_id).count() == 0
 
 
-def test_hard_upsert_archives_previous_version(app, connector):
+def test_upsert_archives_previous_version(app, connector):
     """A RuleUpdateHistory entry must keep the version that was overwritten."""
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
@@ -261,11 +241,11 @@ def test_hard_upsert_archives_previous_version(app, connector):
         old_content = "rule r { condition: true }"
         new_content = "rule r { condition: false }"
         remote = _remote_rule(title="Versioned Rule", to_string=old_content)
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
 
         remote["to_string"] = new_content
-        core._upsert_rule(c, shadow.id, remote, mode="hard")
+        core._upsert_rule(c, shadow.id, remote)
 
         history = RuleUpdateHistory.query.filter_by(rule_id=rule.id).all()
         assert len(history) == 1
@@ -274,20 +254,20 @@ def test_hard_upsert_archives_previous_version(app, connector):
         assert history[0].success is True
 
 
-def test_hard_upsert_restores_deleted_rule(app, connector):
-    """A locally deleted rule is restored (same id) by a hard pull."""
+def test_upsert_restores_deleted_rule(app, connector):
+    """A locally deleted rule is restored (same id) on pull."""
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Deleted Then Pulled")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         rule_id = rule.id
         rule.is_deleted = True
         rule.deleted_at = datetime.datetime.utcnow()
         db.session.commit()
 
-        result = core._upsert_rule(c, shadow.id, remote, mode="hard")
+        result = core._upsert_rule(c, shadow.id, remote)
         assert result == "updated"
 
         rule = Rule.query.get(rule_id)
@@ -296,25 +276,7 @@ def test_hard_upsert_restores_deleted_rule(app, connector):
         assert Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).count() == 1
 
 
-def test_soft_upsert_does_not_recreate_deleted_rule(app, connector):
-    """Soft pull respects a local deletion — the rule stays in the trash."""
-    with app.app_context():
-        c = Connector.query.filter_by(uuid=connector.uuid).first()
-        shadow = core._get_or_create_shadow_user(c)
-        remote = _remote_rule(title="Deleted Stays Deleted")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
-        rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
-        rule.is_deleted = True
-        rule.deleted_at = datetime.datetime.utcnow()
-        db.session.commit()
-
-        result = core._upsert_rule(c, shadow.id, remote, mode="soft")
-        assert result == "skipped"
-        assert Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).count() == 1
-        assert Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first().is_deleted is True
-
-
-def test_hard_upsert_imports_remote_history(app, connector):
+def test_upsert_imports_remote_history(app, connector):
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
@@ -324,7 +286,7 @@ def test_hard_upsert_imports_remote_history(app, connector):
              "message": "fix", "success": True,
              "analyzed_at": "2024-01-15T10:00:00", "manuel_submit": False}
         ]
-        core._upsert_rule(c, shadow.id, remote, mode="hard")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         history = RuleUpdateHistory.query.filter_by(rule_id=rule.id).all()
         assert len(history) == 1
@@ -349,33 +311,35 @@ def test_upsert_bundle_creates_new(app, connector):
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_bundle(name="New Bundle")
-        result = core._upsert_bundle(c, shadow.id, remote, mode="soft")
+        result = core._upsert_bundle(c, shadow.id, remote)
         assert result == "created"
         b = Bundle.query.filter_by(remote_bundle_uuid=remote["uuid"]).first()
         assert b is not None
         assert b.name == "New Bundle"
 
 
-def test_upsert_bundle_soft_skips_existing(app, connector):
+def test_upsert_bundle_skips_identical_existing(app, connector):
+    """Re-pulling an unchanged bundle returns skipped."""
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_bundle(name="Existing Bundle")
-        core._upsert_bundle(c, shadow.id, remote, mode="soft")
-        result = core._upsert_bundle(c, shadow.id, remote, mode="soft")
+        core._upsert_bundle(c, shadow.id, remote)
+        result = core._upsert_bundle(c, shadow.id, remote)
         assert result == "skipped"
 
 
-def test_upsert_bundle_hard_updates_existing(app, connector):
+def test_upsert_bundle_updates_when_newer(app, connector):
+    """A bundle with a newer remote timestamp gets its fields updated."""
     with app.app_context():
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_bundle(name="Original Name")
-        core._upsert_bundle(c, shadow.id, remote, mode="soft")
+        core._upsert_bundle(c, shadow.id, remote)
 
         remote["name"] = "Updated Name"
         remote["updated_at"] = datetime.datetime(2099, 1, 1).isoformat()
-        result = core._upsert_bundle(c, shadow.id, remote, mode="hard")
+        result = core._upsert_bundle(c, shadow.id, remote)
         assert result == "updated"
 
         b = Bundle.query.filter_by(remote_bundle_uuid=remote["uuid"]).first()
@@ -388,7 +352,7 @@ def test_upsert_bundle_invalid_without_uuid(app, connector):
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_bundle()
         remote["uuid"] = None
-        result = core._upsert_bundle(c, shadow.id, remote, mode="soft")
+        result = core._upsert_bundle(c, shadow.id, remote)
         assert result == "invalid"
 
 
@@ -397,7 +361,7 @@ def test_upsert_bundle_sets_connector_id(app, connector):
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_bundle(name="Connector Bundle")
-        core._upsert_bundle(c, shadow.id, remote, mode="soft")
+        core._upsert_bundle(c, shadow.id, remote)
         b = Bundle.query.filter_by(remote_bundle_uuid=remote["uuid"]).first()
         assert b.connector_id == c.id
 
@@ -407,11 +371,11 @@ def test_upsert_bundle_attaches_rules(app, connector):
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote_r = _remote_rule(title="Bundle Member")
-        core._upsert_rule(c, shadow.id, remote_r, mode="soft")
+        core._upsert_rule(c, shadow.id, remote_r)
 
         remote_b = _remote_bundle(name="Bundle With Rules")
         remote_b["rules"] = [remote_r["uuid"]]
-        core._upsert_bundle(c, shadow.id, remote_b, mode="soft")
+        core._upsert_bundle(c, shadow.id, remote_b)
         db.session.commit()
 
         bundle = Bundle.query.filter_by(remote_bundle_uuid=remote_b["uuid"]).first()
@@ -427,12 +391,12 @@ def test_upsert_bundle_repairs_missing_rules(app, connector):
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote_b = _remote_bundle(name="Initially Empty Bundle")
-        core._upsert_bundle(c, shadow.id, remote_b, mode="soft")
+        core._upsert_bundle(c, shadow.id, remote_b)
 
         remote_r = _remote_rule(title="Late Member")
-        core._upsert_rule(c, shadow.id, remote_r, mode="soft")
+        core._upsert_rule(c, shadow.id, remote_r)
         remote_b["rules"] = [remote_r["uuid"]]
-        result = core._upsert_bundle(c, shadow.id, remote_b, mode="soft")
+        result = core._upsert_bundle(c, shadow.id, remote_b)
         db.session.commit()
         assert result == "updated"
 
@@ -449,7 +413,7 @@ def test_upsert_bundle_unknown_rule_uuids_skipped(app, connector):
         shadow = core._get_or_create_shadow_user(c)
         remote_b = _remote_bundle(name="Bundle Unknown Rules")
         remote_b["rules"] = [str(uuid.uuid4()), str(uuid.uuid4())]
-        result = core._upsert_bundle(c, shadow.id, remote_b, mode="soft")
+        result = core._upsert_bundle(c, shadow.id, remote_b)
         db.session.commit()
         assert result == "created"
         bundle = Bundle.query.filter_by(remote_bundle_uuid=remote_b["uuid"]).first()
@@ -481,7 +445,7 @@ def test_sync_tags_attaches_existing_tag(app, connector):
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Tag Test Rule")
         remote["tags"] = ["tlp:clear"]
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         assoc = RuleTagAssociation.query.filter_by(rule_id=rule.id, tag_id=tag_id).first()
         assert assoc is not None
@@ -493,7 +457,7 @@ def test_sync_tags_ignores_unknown_tags(app, connector):
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Unknown Tag Rule")
         remote["tags"] = ["nonexistent:tag-xyz"]
-        result = core._upsert_rule(c, shadow.id, remote, mode="soft")
+        result = core._upsert_rule(c, shadow.id, remote)
         # Must not crash; rule is still created
         assert result == "created"
 
@@ -505,7 +469,7 @@ def test_sync_tags_no_duplicates(app, connector):
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Dup Tag Rule")
         remote["tags"] = ["sigma:high", "sigma:high"]  # intentional duplicate
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         assocs = RuleTagAssociation.query.filter_by(rule_id=rule.id, tag_id=tag_id).all()
         assert len(assocs) == 1
@@ -524,7 +488,7 @@ def test_import_history_adds_entries(app, connector):
             {"old_content": "v2", "new_content": "v3", "message": "update2",
              "success": True, "analyzed_at": "2024-04-01T12:00:00", "manuel_submit": True},
         ]
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         history = RuleUpdateHistory.query.filter_by(rule_id=rule.id).all()
         assert len(history) == 2
@@ -542,7 +506,7 @@ def test_import_history_deduplicates_by_timestamp(app, connector):
             {"old_content": "a", "new_content": "b", "message": "duplicate",
              "success": True, "analyzed_at": same_ts, "manuel_submit": False},
         ]
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         history = RuleUpdateHistory.query.filter_by(rule_id=rule.id).all()
         assert len(history) == 1
@@ -554,7 +518,7 @@ def test_import_history_empty_list_is_ok(app, connector):
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="No History Rule")
         remote["update_history"] = []
-        result = core._upsert_rule(c, shadow.id, remote, mode="soft")
+        result = core._upsert_rule(c, shadow.id, remote)
         assert result == "created"
 
 
@@ -589,7 +553,7 @@ def test_delete_connector_nullifies_rule_connector_id(app, connector):
         c = Connector.query.filter_by(uuid=connector.uuid).first()
         shadow = core._get_or_create_shadow_user(c)
         remote = _remote_rule(title="Orphan After Delete")
-        core._upsert_rule(c, shadow.id, remote, mode="soft")
+        core._upsert_rule(c, shadow.id, remote)
         rule = Rule.query.filter_by(remote_rule_uuid=remote["uuid"]).first()
         rule_id = rule.id
 

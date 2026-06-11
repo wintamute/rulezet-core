@@ -264,48 +264,6 @@
                </div>
             </div>
 
-            <!-- Sync mode -->
-            <div class="mb-4">
-               <div class="connector-form-label fw-semibold mb-2">Sync mode</div>
-               <div class="d-flex flex-column gap-2">
-
-                  <label class="pull-mode-card" :class="pullForm.mode === 'soft' ? 'pull-mode-card--active pull-mode-card--soft' : ''">
-                     <div class="d-flex align-items-start gap-3">
-                        <input type="radio" value="soft" v-model="pullForm.mode" class="mt-1 flex-shrink-0">
-                        <div>
-                           <div class="d-flex align-items-center gap-2 mb-1">
-                              <i class="fa-solid fa-feather text-success"></i>
-                              <strong>Soft pull</strong>
-                              <span class="badge bg-success" style="font-size:.58rem;">Recommended</span>
-                           </div>
-                           <p class="text-muted mb-0" style="font-size:.8rem;line-height:1.5;">
-                              Imports only rules that don't exist locally, checked by UUID then by content.
-                              Existing rules, edits, and history are never touched.
-                           </p>
-                        </div>
-                     </div>
-                  </label>
-
-                  <label class="pull-mode-card" :class="pullForm.mode === 'hard' ? 'pull-mode-card--active pull-mode-card--hard' : ''">
-                     <div class="d-flex align-items-start gap-3">
-                        <input type="radio" value="hard" v-model="pullForm.mode" class="mt-1 flex-shrink-0">
-                        <div>
-                           <div class="d-flex align-items-center gap-2 mb-1">
-                              <i class="fa-solid fa-bolt text-warning"></i>
-                              <strong>Hard pull</strong>
-                              <span class="badge bg-warning text-dark" style="font-size:.58rem;">Overwrites</span>
-                           </div>
-                           <p class="text-muted mb-0" style="font-size:.8rem;line-height:1.5;">
-                              If a matching local rule is found (by UUID or content), it is moved to trash
-                              and replaced by the remote version. Update history is preserved and transferred.
-                           </p>
-                        </div>
-                     </div>
-                  </label>
-
-               </div>
-            </div>
-
             <!-- Filters -->
             <connector-pull-filter ref="pullFilterRef" @filter="onFilterChange"></connector-pull-filter>
 
@@ -318,12 +276,11 @@
             </div>
             <div class="d-flex gap-2">
                <button class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
-               <button class="btn rounded-pill px-4"
-                       :class="pullForm.mode === 'hard' ? 'btn-warning' : 'btn-success'"
+               <button class="btn btn-success rounded-pill px-4"
                        @click="submitPull" :disabled="pullBusy">
                   <span v-if="pullBusy" class="spinner-border spinner-border-sm me-1"></span>
-                  <i v-else :class="pullForm.mode === 'hard' ? 'fa-solid fa-bolt' : 'fa-solid fa-feather'" class="me-1"></i>
-                  [[ pullForm.mode === 'hard' ? 'Hard pull' : 'Soft pull' ]]
+                  <i v-else class="fa-solid fa-cloud-arrow-down me-1"></i>
+                  Pull
                </button>
             </div>
          </div>
@@ -383,7 +340,6 @@ createApp({
 
       // Pull modal state
       const pullConnector = ref(null)
-      const pullForm      = reactive({ mode: 'soft' })
       const pullBusy      = ref(false)
       const pullFilterRef = ref(null)
       const pullFilters   = ref({})
@@ -465,7 +421,6 @@ createApp({
 
       function openPullModal(c) {
          pullConnector.value = c
-         pullForm.mode = 'soft'
          bsPullModal?.show()
       }
 
@@ -477,14 +432,13 @@ createApp({
             const res  = await fetch(`/connector/pull/${pullConnector.value.uuid}`, {
                method:  'POST',
                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-               body:    JSON.stringify({ mode: pullForm.mode, filters }),
+               body:    JSON.stringify({ filters }),
             })
             const data = await res.json()
             bsPullModal?.hide()
             if (data.success) window.dispatchEvent(new Event('rz:job-created'))
-            const label = pullForm.mode === 'hard' ? 'Hard' : 'Soft'
             create_message(
-               data.success ? `${label} pull queued as background job.` : (data.error || 'Error queuing pull.'),
+               data.success ? 'Pull queued as background job.' : (data.error || 'Error queuing pull.'),
                data.success ? 'success' : 'danger'
             )
          } catch { create_message('Network error — pull not queued.', 'danger') }
@@ -496,7 +450,7 @@ createApp({
          rulezetTable, otherTable,
          saving, editMode, form, formError,
          openCreate, openEdit, saveConnector,
-         pullConnector, pullForm, pullBusy, pullFilterRef,
+         pullConnector, pullBusy, pullFilterRef,
          onFilterChange, openPullModal, submitPull,
       }
    }

@@ -156,18 +156,12 @@ def pull_connector(connector_uuid):
     if not connector.is_active:
         return jsonify({'success': False, 'error': 'Connector is disabled.'}), 400
 
-    data = request.get_json(silent=True) or {}
-    mode = data.get('mode', 'soft')
-    if mode not in ('soft', 'hard'):
-        mode = 'soft'
-
-    job = ConnectorModel.trigger_pull(connector, triggered_by=current_user.id, mode=mode)
+    job = ConnectorModel.trigger_pull(connector, triggered_by=current_user.id)
     if not job:
         return jsonify({'success': False, 'error': 'Could not queue pull job.'}), 500
 
     return jsonify({
         'success': True,
-        'message': f'Pull [{mode}] queued as background job.',
+        'message': 'Pull queued as background job.',
         'job_uuid': job.uuid,
-        'mode': mode,
     }), 200
