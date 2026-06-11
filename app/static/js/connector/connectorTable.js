@@ -771,6 +771,7 @@ export default {
             }
             const skipped = selectedUuids.size - connectors.length
             const note = skipped > 0 ? ` (${skipped} skipped — self)` : ''
+            if (queued > 0) window.dispatchEvent(new Event('rz:job-created'))
             create_message(`${queued} pull job(s) queued [${mode}]${note}.`, 'success')
             clearSelection()
             bulkBusy.value = false

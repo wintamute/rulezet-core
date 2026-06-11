@@ -1126,6 +1126,7 @@ createApp({
             const data = await post('/jobs/create', { job_type, label, payload: { path } })
             const { create_message } = await import('/static/js/toaster.js')
             if (data.job) {
+                window.dispatchEvent(new Event('rz:job-created'))
                 lastJobMsg.value = `"${label}" queued as a background job.`
                 create_message(`${label} — queued`, 'success-subtle')
             } else {
@@ -1173,6 +1174,7 @@ createApp({
             const data = await post('/jobs/create', { job_type, label, payload: { name } })
             const { create_message } = await import('/static/js/toaster.js')
             if (data.job) {
+                window.dispatchEvent(new Event('rz:job-created'))
                 create_message(`${label} — queued`, 'success-subtle')
             } else {
                 create_message(data.error || 'Failed to queue job', 'danger-subtle')

@@ -481,6 +481,7 @@ createApp({
             })
             const data = await res.json()
             bsPullModal?.hide()
+            if (data.success) window.dispatchEvent(new Event('rz:job-created'))
             const label = pullForm.mode === 'hard' ? 'Hard' : 'Soft'
             create_message(
                data.success ? `${label} pull queued as background job.` : (data.error || 'Error queuing pull.'),

@@ -500,6 +500,7 @@ createApp({
           body: JSON.stringify({ ids: selectedIds.value }),
         })
         const data = await res.json()
+        if (data.success) window.dispatchEvent(new Event('rz:job-created'))
         create_message(data.message, data.success ? 'success-subtle' : 'danger-subtle')
         fetchLogs(1)
       } catch (e) { create_message('Error: ' + e, 'danger-subtle') }
@@ -514,6 +515,7 @@ createApp({
           body: JSON.stringify({ delete_all: true, action_filter: actionFilter.value }),
         })
         const data = await res.json()
+        if (data.success) window.dispatchEvent(new Event('rz:job-created'))
         create_message(data.message, data.success ? 'success-subtle' : 'danger-subtle')
         fetchLogs(1)
       } catch (e) { create_message('Error: ' + e, 'danger-subtle') }
