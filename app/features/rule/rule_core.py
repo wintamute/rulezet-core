@@ -276,8 +276,18 @@ def count_deleted_rules() -> int:
     return Rule.query.filter(Rule.is_deleted == True).count()
 
 
-# Default tags automatically attached to every new rule
-_DEFAULT_TAG_NAMES = ['tlp:clear', 'pap:clear']
+# Default tags automatically attached to every new rule — loaded from config/default_tags.json
+def _load_default_tag_names() -> list:
+    try:
+        from pathlib import Path
+        config_path = Path(__file__).parents[3] / "config" / "default_tags.json"
+        with open(config_path) as f:
+            return json.load(f).get("auto_attach", [])
+    except Exception:
+        return ["tlp:clear", "pap:clear"]
+
+_DEFAULT_TAG_NAMES = _load_default_tag_names()
+
 
 def _attach_default_tags(rule, user_id):
     """Silently attach default tags to a newly created rule if they exist in the DB."""

@@ -914,3 +914,33 @@ body.dark-mode .connector-card {
 }
 .cpf-dropdown-item--manual:hover { background: rgba(13,110,253,.06); }
 
+/* ── Missing tag families banner ──────────────────────── */
+.cnt-missing-tags-banner {
+    margin: .6rem 0 .4rem;
+    padding: .65rem .85rem;
+    border-radius: 10px;
+    border-left: 3px solid #ffc107;
+    background: rgba(255, 193, 7, .07);
+}
+[data-bs-theme="dark"] .cnt-missing-tags-banner {
+    background: rgba(255, 193, 7, .05);
+}
+.cnt-missing-tags-banner__header {
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+    margin-bottom: .45rem;
+}
+.cnt-missing-tags-banner__body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem .6rem;
+}
+.cnt-family-check {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: .78rem;
+    color: var(--text-color);
+}
+

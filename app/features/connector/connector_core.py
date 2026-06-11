@@ -15,11 +15,14 @@ from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
+import json as _json
+
 from app import db
 from app.core.db_class.db import (
-    Bundle, BundleRuleAssociation, Connector, Rule, User,
+    Bundle, BundleRuleAssociation, BundleTagAssociation, Connector, Rule, User,
     RuleTagAssociation, Tag, ActivityLog, RuleUpdateHistory,
 )
+from sqlalchemy import func
 from app.core.utils.activity_log import log_activity
 from app.features.jobs.jobs_core import create_job
 
@@ -311,7 +314,8 @@ def trigger_pull(connector: Connector, triggered_by: int, mode: str = 'soft') ->
 # ─── Sync helpers (called from job handler) ───────────────────────────────────
 
 def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
-                 mode: str = 'soft', triggered_by_id: int = None) -> str:
+                 mode: str = 'soft', triggered_by_id: int = None,
+                 missing_tags: set = None) -> str:
     """
     Matching is by UUID only (remote canonical uuid vs local remote_rule_uuid
     or uuid) — content is never compared.
@@ -345,8 +349,13 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
     ).order_by(Rule.is_deleted.asc()).first()
 
     if local_match:
-        # ── Soft mode: existence (even in trash) → skip ───────────────────────
+        # ── Soft mode: keep local content, but sync tags and CVEs from remote ──
         if mode == 'soft':
+            if not local_match.is_deleted:
+                missed = _sync_tags(local_match, remote.get('tags', []), owner_id)
+                if missing_tags is not None:
+                    missing_tags.update(missed)
+                _sync_cve_ids(local_match, remote.get('cve_ids', []))
             return 'skipped'
 
         # ── Hard mode: import the remote version over the local rule ─────────
@@ -387,6 +396,12 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
                 setattr(local_match, field, value)
                 meta_changed = True
 
+        # Always sync tags and CVEs — even when content/metadata are identical
+        missed = _sync_tags(local_match, remote.get('tags', []), owner_id)
+        if missing_tags is not None:
+            missing_tags.update(missed)
+        _sync_cve_ids(local_match, remote.get('cve_ids', []))
+
         if not content_changed and not meta_changed and not restored:
             return 'skipped'
 
@@ -395,7 +410,6 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
         local_match.last_modif        = now
         db.session.flush()
 
-        _sync_tags(local_match, remote.get('tags', []), owner_id)
         _import_rule_history(local_match, remote.get('update_history', []), owner_id)
         return 'updated'
 
@@ -422,7 +436,10 @@ def _upsert_rule(connector: Connector, shadow_user_id: int, remote: dict,
     )
     db.session.add(rule)
     db.session.flush()
-    _sync_tags(rule, remote.get('tags', []), owner_id)
+    missed = _sync_tags(rule, remote.get('tags', []), owner_id)
+    if missing_tags is not None:
+        missing_tags.update(missed)
+    _sync_cve_ids(rule, remote.get('cve_ids', []))
     _import_rule_history(rule, remote.get('update_history', []), owner_id)
     return 'created'
 
@@ -464,12 +481,127 @@ def _import_rule_history(rule: Rule, history: list, fallback_user_id: int) -> No
             logger.warning("_import_rule_history: skipped entry for rule %s: %s", rule.id, exc)
 
 
-def _sync_tags(rule: Rule, tag_names: list, user_id: int) -> None:
-    """Attach tags that already exist locally; silently skip unknown ones."""
+def _find_tag(name: str):
+    """Exact case-insensitive tag lookup — avoids ilike treating _ and % as wildcards."""
+    return Tag.query.filter(func.lower(Tag.name) == name.lower()).first()
+
+
+def _auto_install_galaxy(gtype: str) -> bool:
+    """Ensure a galaxy type is fully installed from the local submodule.
+
+    - If the galaxy is not in DB yet: imports all clusters.
+    - If already in DB: runs an update pass to add any new clusters that exist
+      on disk but are missing from the DB (handles stale/outdated galaxy installs).
+
+    Uses the instance admin as creator. Returns True if the galaxy is now usable.
+    """
+    try:
+        from app.features.tags.tags_core import (
+            add_tags_from_misp_galaxy,
+            update_tags_from_misp_galaxy,
+            get_all_galaxy_uuids_from_disk,
+            get_all_galaxies_in_db,
+        )
+        from app.features.account.account_core import get_admin_user
+
+        admin = get_admin_user()
+        if not admin:
+            return False
+
+        gtype_to_uid = {gt: uid for uid, gt in get_all_galaxy_uuids_from_disk()}
+        uid = gtype_to_uid.get(gtype)
+        if not uid:
+            logger.warning("_auto_install_galaxy: '%s' not found in submodule", gtype)
+            return False
+
+        if gtype not in get_all_galaxies_in_db():
+            # Fresh install
+            ok, msg = add_tags_from_misp_galaxy(uid, admin)
+            logger.info("_auto_install_galaxy: installed '%s' — %s", gtype, msg)
+        else:
+            # Already present — add any new clusters from the submodule
+            ok, msg = update_tags_from_misp_galaxy(uid, admin)
+            logger.info("_auto_install_galaxy: updated '%s' — %s", gtype, msg)
+
+        return bool(ok)
+    except Exception as exc:
+        logger.warning("_auto_install_galaxy: failed for '%s': %s", gtype, exc)
+        return False
+
+
+def _create_stub_galaxy_tag(name: str, user_id: int) -> "Tag | None":
+    """Create a minimal Tag for a galaxy cluster not present in the local submodule.
+
+    Uses a savepoint so a duplicate-name error only rolls back this one insert,
+    not the entire pull transaction.
+    """
+    try:
+        gtype = name[len("misp-galaxy:"):].split("=")[0].strip().rstrip('"')
+        with db.session.begin_nested():
+            tag = Tag(
+                uuid=str(uuid_mod.uuid4()),
+                name=name,
+                source="Galaxy",
+                is_active=True,
+                is_approved_by_admin=True,
+                galaxy_meta={"type": gtype, "stub": True},
+                created_by=user_id,
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+                updated_at=datetime.datetime.now(datetime.timezone.utc),
+            )
+            db.session.add(tag)
+        logger.info("_create_stub_galaxy_tag: created stub '%s'", name)
+        return tag
+    except Exception:
+        # Savepoint rolled back — tag was already created in this transaction
+        return _find_tag(name)
+
+
+def _ensure_tag(name: str, user_id: int, auto_installed: set) -> "Tag | None":
+    """Return a local Tag for *name*, installing/creating it if needed.
+
+    1. Look up the tag by exact name.
+    2. If not found and it is a galaxy tag: auto-install the galaxy (once per type),
+       then retry the lookup.
+    3. If still not found and it is a galaxy tag: create a stub so the cluster is
+       attached even when the local submodule is behind the remote.
+    """
+    tag = _find_tag(name)
+    if tag is not None:
+        return tag
+
+    if name.startswith("misp-galaxy:") and "=" in name:
+        gtype = name[len("misp-galaxy:"):].split("=")[0].strip().rstrip('"')
+        if gtype not in auto_installed:
+            _auto_install_galaxy(gtype)
+            auto_installed.add(gtype)
+        tag = _find_tag(name)
+        if tag is None:
+            # Cluster not in local submodule — create a stub
+            tag = _create_stub_galaxy_tag(name, user_id)
+
+    return tag
+
+
+def _sync_tags(rule: Rule, tag_names: list, user_id: int) -> set:
+    """Attach tags to a rule, auto-installing/creating galaxy tags as needed.
+
+    Returns a set of non-galaxy tag names that could not be found locally
+    (taxonomy or manual tags that simply do not exist on this instance).
+    """
+    missing: set = set()
+    auto_installed: set = set()
+
     for name in tag_names:
-        tag = Tag.query.filter(Tag.name.ilike(name)).first()
-        if not tag:
+        tag = _ensure_tag(name, user_id, auto_installed)
+
+        if tag is None:
+            missing.add(name)
             continue
+
+        if not tag.is_active:
+            tag.is_active = True
+
         already = RuleTagAssociation.query.filter_by(rule_id=rule.id, tag_id=tag.id).first()
         if not already:
             db.session.add(RuleTagAssociation(
@@ -479,6 +611,108 @@ def _sync_tags(rule: Rule, tag_names: list, user_id: int) -> None:
                 user_id=user_id,
                 added_at=datetime.datetime.now(datetime.timezone.utc),
             ))
+    return missing
+
+
+def _sync_bundle_tags(bundle: Bundle, tag_names: list, user_id: int) -> set:
+    """Same as _sync_tags but for bundles via BundleTagAssociation."""
+    missing: set = set()
+    auto_installed: set = set()
+
+    for name in tag_names:
+        tag = _ensure_tag(name, user_id, auto_installed)
+
+        if tag is None:
+            missing.add(name)
+            continue
+
+        if not tag.is_active:
+            tag.is_active = True
+
+        already = BundleTagAssociation.query.filter_by(bundle_id=bundle.id, tag_id=tag.id).first()
+        if not already:
+            db.session.add(BundleTagAssociation(
+                uuid=str(uuid_mod.uuid4()),
+                bundle_id=bundle.id,
+                tag_id=tag.id,
+                user_id=user_id,
+                added_at=datetime.datetime.now(datetime.timezone.utc),
+            ))
+    return missing
+
+
+def _sync_cve_ids(obj, remote_cve_ids: list) -> None:
+    """Merge remote CVE ids into the local object's cve_id field (additive)."""
+    if not remote_cve_ids:
+        return
+    try:
+        existing = _json.loads(obj.cve_id) if obj.cve_id else []
+        if not isinstance(existing, list):
+            existing = [existing] if existing else []
+    except (TypeError, ValueError):
+        existing = [obj.cve_id] if obj.cve_id else []
+
+    merged = list(existing)
+    for cid in remote_cve_ids:
+        if cid and cid not in merged:
+            merged.append(cid)
+
+    if merged != existing:
+        obj.cve_id = _json.dumps(merged)
+
+
+def _extract_tag_family(name: str) -> str | None:
+    """Extract the tag family/namespace from a tag name.
+
+    Examples:
+        'tlp:clear'                      -> 'tlp'
+        'pap:white'                      -> 'pap'
+        'misp-galaxy:threat-actor="X"'  -> 'misp-galaxy:threat-actor'
+    """
+    if not name or ":" not in name:
+        return None
+    if name.startswith("misp-galaxy:"):
+        suffix = name[len("misp-galaxy:"):]
+        return "misp-galaxy:" + suffix.split("=")[0].rstrip('"').strip()
+    return name.split(":")[0]
+
+
+def import_tag_families(families: list, user) -> list:
+    """Import tag families from MISP taxonomies/galaxies submodules.
+
+    Returns a list of dicts: [{family, ok, msg}, ...].
+    Families that start with 'misp-galaxy:' are imported from galaxies,
+    others from taxonomies.
+    """
+    from app.features.tags.tags_core import (
+        add_tags_from_misp_taxonomy,
+        add_tags_from_misp_galaxy,
+        get_all_taxonomy_uuids_from_disk,
+        get_all_galaxy_uuids_from_disk,
+    )
+    ns_to_uid    = {ns: uid for uid, ns in get_all_taxonomy_uuids_from_disk()}
+    gtype_to_uid = {gtype: uid for uid, gtype in get_all_galaxy_uuids_from_disk()}
+
+    results = []
+    for family in families:
+        family = family.strip()
+        if not family:
+            continue
+        if family.startswith("misp-galaxy:"):
+            gtype = family[len("misp-galaxy:"):]
+            uid   = gtype_to_uid.get(gtype)
+            if uid:
+                ok, msg = add_tags_from_misp_galaxy(uid, user)
+            else:
+                ok, msg = False, f"Galaxy type '{gtype}' not found on disk."
+        else:
+            uid = ns_to_uid.get(family)
+            if uid:
+                ok, msg = add_tags_from_misp_taxonomy(uid, user)
+            else:
+                ok, msg = False, f"Taxonomy '{family}' not found on disk."
+        results.append({'family': family, 'ok': bool(ok), 'msg': msg})
+    return results
 
 
 def _sync_bundle_rules(bundle: Bundle, rule_uuids: list) -> int:
@@ -523,8 +757,10 @@ def _upsert_bundle(connector: Connector, shadow_user_id: int, remote: dict,
     now = datetime.datetime.now(datetime.timezone.utc)
 
     if existing:
-        # Always repair membership, even when the bundle itself is untouched
+        # Always repair membership, tags and CVEs — even when bundle is untouched
         added = _sync_bundle_rules(existing, remote.get('rules', []))
+        _sync_bundle_tags(existing, remote.get('tags', []), owner_id)
+        _sync_cve_ids(existing, remote.get('vulnerability_identifiers', []))
         if mode == 'soft':
             return 'updated' if added else 'skipped'
         remote_ts = remote.get('updated_at')
@@ -559,4 +795,6 @@ def _upsert_bundle(connector: Connector, shadow_user_id: int, remote: dict,
     db.session.add(bundle)
     db.session.flush()
     _sync_bundle_rules(bundle, remote.get('rules', []))
+    _sync_bundle_tags(bundle, remote.get('tags', []), owner_id)
+    _sync_cve_ids(bundle, remote.get('vulnerability_identifiers', []))
     return 'created'

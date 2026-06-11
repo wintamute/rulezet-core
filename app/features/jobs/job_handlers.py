@@ -822,7 +822,7 @@ def handle_connector_pull(job, app):
     import requests as http_requests
     from app.core.db_class.db import Connector
     from app.features.connector.connector_core import (
-        _get_or_create_shadow_user, _upsert_rule, _upsert_bundle,
+        _get_or_create_shadow_user, _upsert_rule, _upsert_bundle, _extract_tag_family,
     )
     from app.core.utils.activity_log import log_activity
 
@@ -925,6 +925,7 @@ def handle_connector_pull(job, app):
         bundles_updated = 0
         bundles_skipped = 0
         had_error       = False
+        all_missing_tags: set = set()
 
         MAX_PAGES = 10_000  # safety guard against infinite pagination loops
 
@@ -954,7 +955,7 @@ def handle_connector_pull(job, app):
                     pg_created = pg_updated = pg_skipped = 0
                     for item in items:
                         try:
-                            result = _upsert_rule(connector, effective_user_id, item, mode=mode, triggered_by_id=job.created_by)
+                            result = _upsert_rule(connector, effective_user_id, item, mode=mode, triggered_by_id=job.created_by, missing_tags=all_missing_tags)
                             if result == 'created':
                                 rules_created += 1; pg_created += 1
                             elif result == 'updated':
@@ -1033,6 +1034,12 @@ def handle_connector_pull(job, app):
         now       = datetime.datetime.now(datetime.timezone.utc)
         duration  = round(_time.monotonic() - t_start, 1)
 
+        # Compute unique tag families that had no local match
+        missing_families = sorted({
+            f for n in all_missing_tags
+            for f in [_extract_tag_family(n)] if f
+        })
+
         if not had_error:
             connector.last_sync_at = now
             connector.is_verified  = True
@@ -1048,24 +1055,30 @@ def handle_connector_pull(job, app):
             f"={rules_skipped} skipped, {rules_errors} errors | "
             f"bundles: +{bundles_created} new, ~{bundles_updated} updated, ={bundles_skipped} skipped."
         )
+        if missing_families:
+            log_job(job,
+                    f"Tag families from remote not installed locally: {', '.join(missing_families)}",
+                    level='warning', event='progress')
+
         log_job(job, summary, level='success', event='done')
         log_activity('connector.pull_done',
                      f"Connector '{connector.name}': {summary}",
                      target_type='connector', target_id=connector.id,
                      target_uuid=connector.uuid,
                      extra={
-                         'mode':             mode,
-                         'rules_added':      rules_created,
-                         'rules_updated':    rules_updated,
-                         'rules_skipped':    rules_skipped,
-                         'rules_errors':     rules_errors,
-                         'bundles_added':    bundles_created,
-                         'bundles_updated':  bundles_updated,
-                         'bundles_skipped':  bundles_skipped,
-                         'remote_rules':     total_rules_remote,
-                         'remote_bundles':   total_bundles_remote,
-                         'had_error':        had_error,
-                         'duration_s':       duration,
+                         'mode':                mode,
+                         'rules_added':         rules_created,
+                         'rules_updated':       rules_updated,
+                         'rules_skipped':       rules_skipped,
+                         'rules_errors':        rules_errors,
+                         'bundles_added':       bundles_created,
+                         'bundles_updated':     bundles_updated,
+                         'bundles_skipped':     bundles_skipped,
+                         'remote_rules':        total_rules_remote,
+                         'remote_bundles':      total_bundles_remote,
+                         'had_error':           had_error,
+                         'duration_s':          duration,
+                         'missing_tag_families': missing_families,
                      })
 
 

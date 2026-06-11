@@ -17,7 +17,7 @@
 import PaginationComponent from '/static/js/rule/paginationComponent.js'
 import { create_message } from '/static/js/toaster.js'
 
-const { ref, reactive, computed, onMounted } = Vue
+const { ref, reactive, computed, onMounted, watch } = Vue
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +126,16 @@ const ConnectorRow = {
         const visibleHistory = computed(() => historyItems.value.slice(0, historyPage.value))
         const hasMoreHistory = computed(() => historyPage.value < historyItems.value.length)
 
+        // Missing tag families from the last pull_done entry
+        const missingFamilies = computed(() => {
+            const last = historyItems.value.find(e => e.action?.includes('pull_done'))
+            return (last?.extra?.missing_tag_families || [])
+        })
+        const selectedFamilies = ref([])
+        const importBusy       = ref(false)
+
+        watch(missingFamilies, (families) => { selectedFamilies.value = [...families] }, { immediate: true })
+
         function loadMoreHistory() { historyPage.value += 5 }
 
         async function doPost(url, body = {}) {
@@ -134,6 +144,31 @@ const ConnectorRow = {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken },
                 body:    JSON.stringify(body),
             })
+        }
+
+        async function importFamilies() {
+            if (!selectedFamilies.value.length) return
+            importBusy.value = true
+            try {
+                const r    = await doPost('/connector/import_tag_families', { families: selectedFamilies.value })
+                const data = await r.json()
+                if (data.success) {
+                    const ok  = data.results.filter(x => x.ok).map(x => x.family)
+                    const err = data.results.filter(x => !x.ok).map(x => x.family)
+                    if (ok.length)  create_message(`Imported: ${ok.join(', ')}`, 'success')
+                    if (err.length) create_message(`Failed: ${err.join(', ')}`, 'warning')
+                    // Remove successfully imported families from the list
+                    selectedFamilies.value = err
+                } else {
+                    create_message(data.error || 'Import failed.', 'danger')
+                }
+            } finally { importBusy.value = false }
+        }
+
+        function toggleFamily(f) {
+            const idx = selectedFamilies.value.indexOf(f)
+            if (idx >= 0) selectedFamilies.value.splice(idx, 1)
+            else selectedFamilies.value.push(f)
         }
 
         async function testConn() {
@@ -177,6 +212,8 @@ const ConnectorRow = {
         return {
             expanded, historyItems, historyLoading, actionBusy, historyStats,
             visibleHistory, hasMoreHistory, loadMoreHistory,
+            missingFamilies, selectedFamilies, importBusy,
+            toggleFamily, importFamilies,
             statusClass, statusLabel, statusIcon,
             actionBadgeClass, actionIcon, dotClass,
             testConn, deleteConn, toggleHistory,
@@ -329,6 +366,33 @@ const ConnectorRow = {
           <i class="fa-solid fa-triangle-exclamation me-2"></i>[[ c.last_error ]]
         </div>
 
+        <!-- Missing tag families banner -->
+        <div v-if="missingFamilies.length" class="cnt-missing-tags-banner">
+          <div class="cnt-missing-tags-banner__header">
+            <i class="fa-solid fa-tags me-2 text-warning"></i>
+            <strong style="font-size:.8rem;">Tags not installed locally</strong>
+            <span class="text-muted ms-1" style="font-size:.75rem;">(from last pull)</span>
+          </div>
+          <div class="cnt-missing-tags-banner__body">
+            <label v-for="f in missingFamilies" :key="f" class="cnt-family-check">
+              <input type="checkbox"
+                     :value="f"
+                     :checked="selectedFamilies.includes(f)"
+                     @change="toggleFamily(f)"
+                     class="me-1" />
+              <code style="font-size:.72rem;">[[ f ]]</code>
+            </label>
+          </div>
+          <button class="btn btn-sm btn-warning rounded-pill mt-2"
+                  style="font-size:.72rem;"
+                  :disabled="importBusy || !selectedFamilies.length"
+                  @click="importFamilies">
+            <span v-if="importBusy" class="spinner-border spinner-border-sm me-1"></span>
+            <i v-else class="fa-solid fa-download me-1"></i>
+            Import selected
+          </button>
+        </div>
+
         <!-- Timeline -->
         <div class="cnt-timeline">
           <div v-for="(e, idx) in visibleHistory" :key="e.timestamp+e.action+idx" class="cnt-timeline-item">
@@ -392,6 +456,15 @@ const ConnectorCard = {
         const visibleHistory = computed(() => historyItems.value.slice(0, historyPage.value))
         const hasMoreHistory = computed(() => historyPage.value < historyItems.value.length)
 
+        const missingFamilies  = computed(() => {
+            const last = historyItems.value.find(e => e.action?.includes('pull_done'))
+            return (last?.extra?.missing_tag_families || [])
+        })
+        const selectedFamilies = ref([])
+        const importBusy       = ref(false)
+
+        watch(missingFamilies, (families) => { selectedFamilies.value = [...families] }, { immediate: true })
+
         function loadMoreHistory() { historyPage.value += 5 }
 
         async function doPost(url, body = {}) {
@@ -400,6 +473,30 @@ const ConnectorCard = {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken },
                 body:    JSON.stringify(body),
             })
+        }
+
+        async function importFamilies() {
+            if (!selectedFamilies.value.length) return
+            importBusy.value = true
+            try {
+                const r    = await doPost('/connector/import_tag_families', { families: selectedFamilies.value })
+                const data = await r.json()
+                if (data.success) {
+                    const ok  = data.results.filter(x => x.ok).map(x => x.family)
+                    const err = data.results.filter(x => !x.ok).map(x => x.family)
+                    if (ok.length)  create_message(`Imported: ${ok.join(', ')}`, 'success')
+                    if (err.length) create_message(`Failed: ${err.join(', ')}`, 'warning')
+                    selectedFamilies.value = err
+                } else {
+                    create_message(data.error || 'Import failed.', 'danger')
+                }
+            } finally { importBusy.value = false }
+        }
+
+        function toggleFamily(f) {
+            const idx = selectedFamilies.value.indexOf(f)
+            if (idx >= 0) selectedFamilies.value.splice(idx, 1)
+            else selectedFamilies.value.push(f)
         }
 
         async function testConn() {
@@ -443,6 +540,8 @@ const ConnectorCard = {
         return {
             expanded, historyItems, historyLoading, actionBusy, historyStats,
             visibleHistory, hasMoreHistory, loadMoreHistory,
+            missingFamilies, selectedFamilies, importBusy,
+            toggleFamily, importFamilies,
             statusClass, statusLabel, statusIcon,
             actionBadgeClass, actionIcon, dotClass,
             testConn, deleteConn, toggleHistory,
@@ -593,6 +692,32 @@ const ConnectorCard = {
       <!-- Error banner -->
       <div v-if="c.last_error" class="cnt-hist-error-banner">
         <i class="fa-solid fa-triangle-exclamation me-2"></i>[[ c.last_error ]]
+      </div>
+      <!-- Missing tag families banner -->
+      <div v-if="missingFamilies.length" class="cnt-missing-tags-banner">
+        <div class="cnt-missing-tags-banner__header">
+          <i class="fa-solid fa-tags me-2 text-warning"></i>
+          <strong style="font-size:.8rem;">Tags not installed locally</strong>
+          <span class="text-muted ms-1" style="font-size:.75rem;">(from last pull)</span>
+        </div>
+        <div class="cnt-missing-tags-banner__body">
+          <label v-for="f in missingFamilies" :key="f" class="cnt-family-check">
+            <input type="checkbox"
+                   :value="f"
+                   :checked="selectedFamilies.includes(f)"
+                   @change="toggleFamily(f)"
+                   class="me-1" />
+            <code style="font-size:.72rem;">[[ f ]]</code>
+          </label>
+        </div>
+        <button class="btn btn-sm btn-warning rounded-pill mt-2"
+                style="font-size:.72rem;"
+                :disabled="importBusy || !selectedFamilies.length"
+                @click="importFamilies">
+          <span v-if="importBusy" class="spinner-border spinner-border-sm me-1"></span>
+          <i v-else class="fa-solid fa-download me-1"></i>
+          Import selected
+        </button>
       </div>
       <!-- Timeline -->
       <div class="cnt-timeline">

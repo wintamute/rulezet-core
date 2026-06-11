@@ -5,13 +5,14 @@ These endpoints are what other Rulezet instances call when they pull from us.
 Authentication uses the standard X-API-KEY header (same as private API).
 """
 
+import json
 import os
 import datetime
 
 from flask import request
 from flask_restx import Namespace, Resource
 
-from app.core.db_class.db import Rule, Bundle, Tag, RuleTagAssociation, RuleUpdateHistory
+from app.core.db_class.db import Rule, Bundle, Tag, RuleTagAssociation, BundleTagAssociation, RuleUpdateHistory
 
 sync_ns = Namespace(
     "Sync 🔗",
@@ -47,6 +48,12 @@ def _rule_to_sync_json(rule: Rule) -> dict:
                   .order_by(RuleUpdateHistory.analyzed_at.asc())
                   .all())
     ]
+    # cve_id is stored as a JSON-encoded list or plain string
+    try:
+        cve_ids = json.loads(rule.cve_id) if rule.cve_id else []
+    except (TypeError, ValueError):
+        cve_ids = [rule.cve_id] if rule.cve_id else []
+
     return {
         # canonical identity: keep the origin uuid when this rule was itself
         # pulled from another instance, so identity stays stable across hops
@@ -60,6 +67,7 @@ def _rule_to_sync_json(rule: Rule) -> dict:
         'license':        rule.license,
         'source':         rule.source,
         'tags':           tags,
+        'cve_ids':        cve_ids,
         'last_modif':     rule.last_modif.isoformat() if rule.last_modif else None,
         'created_at':     rule.creation_date.isoformat() if rule.creation_date else None,
         'update_history': history,
@@ -72,13 +80,22 @@ def _bundle_to_sync_json(bundle: Bundle) -> dict:
         for a in bundle.rules_assoc.all()
         if a.rule and not a.rule.is_deleted
     ]
+    tags = [a.tag.name for a in
+            BundleTagAssociation.query.filter_by(bundle_id=bundle.id).all()
+            if a.tag]
+    try:
+        vuln_ids = json.loads(bundle.vulnerability_identifiers) if bundle.vulnerability_identifiers else []
+    except (TypeError, ValueError):
+        vuln_ids = []
     return {
-        'uuid':        bundle.uuid,
-        'name':        bundle.name,
-        'description': bundle.description,
-        'rules':       rule_uuids,
-        'updated_at':  bundle.updated_at.isoformat() if bundle.updated_at else None,
-        'created_at':  bundle.created_at.isoformat() if bundle.created_at else None,
+        'uuid':                    bundle.uuid,
+        'name':                    bundle.name,
+        'description':             bundle.description,
+        'rules':                   rule_uuids,
+        'tags':                    tags,
+        'vulnerability_identifiers': vuln_ids,
+        'updated_at':              bundle.updated_at.isoformat() if bundle.updated_at else None,
+        'created_at':              bundle.created_at.isoformat() if bundle.created_at else None,
     }
 
 

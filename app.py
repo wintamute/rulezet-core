@@ -9,7 +9,7 @@ import os
 
 
 from app.features.rule.rule_format.utils_format.utils_import_update import delete_existing_repo_folder
-from app.core.utils.init_db import create_admin, create_default_user, insert_default_formats, show_admin_first_connection
+from app.core.utils.init_db import create_admin, create_default_user, insert_default_formats, seed_default_tags, show_admin_first_connection
 from app.features.connector.connector_core import seed_official_connector
 from app import _init_instance_config
 
@@ -47,6 +47,7 @@ if args.init_db:
         insert_default_formats()
         seed_official_connector()
         _init_instance_config(app)
+        seed_default_tags(admin)
         show_admin_first_connection(admin, raw_password)
 
 elif args.recreate_db:
@@ -59,6 +60,7 @@ elif args.recreate_db:
         insert_default_formats()
         seed_official_connector()
         _init_instance_config(app)
+        seed_default_tags(admin)
         show_admin_first_connection(admin, raw_password)
 elif args.delete_db:
     with app.app_context():

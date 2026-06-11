@@ -7,7 +7,7 @@ Access is restricted to admin users only.
 from urllib.parse import urlparse
 
 from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 import app.features.connector.connector_core as ConnectorModel
 from app.core.utils.activity_log import log_activity
@@ -126,6 +126,22 @@ def connector_history(connector_uuid):
     if not connector:
         return jsonify({'success': False, 'error': 'Not found.'}), 404
     return jsonify(ConnectorModel.get_connector_history(connector)), 200
+
+
+@connector_blueprint.route('/import_tag_families', methods=['POST'])
+def import_tag_families():
+    """Import one or more tag families from the MISP taxonomy/galaxy submodules.
+
+    Body: { "families": ["tlp", "pap", "misp-galaxy:threat-actor", ...] }
+    """
+    data     = request.get_json(silent=True) or {}
+    families = data.get('families', [])
+    if not families or not isinstance(families, list):
+        return jsonify({'success': False, 'error': 'families must be a non-empty list.'}), 400
+
+    results = ConnectorModel.import_tag_families(families, current_user)
+    all_ok  = all(r['ok'] for r in results)
+    return jsonify({'success': True, 'results': results, 'all_ok': all_ok}), 200
 
 
 @connector_blueprint.route('/pull/<string:connector_uuid>', methods=['POST'])
