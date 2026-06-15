@@ -34,6 +34,11 @@ def connector_list():
     return render_template('connector/connector_list.html')
 
 
+@connector_blueprint.route('/how-it-works', methods=['GET'])
+def connector_how_it_works():
+    return render_template('connector/connector_how_it_works.html')
+
+
 # ─── CRUD (JSON API used by the Vue app) ──────────────────────────────────────
 
 def _is_self(instance_url: str) -> bool:

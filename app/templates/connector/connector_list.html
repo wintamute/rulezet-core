@@ -32,67 +32,15 @@
       </p>
    </div>
 
-   <!-- ── How connectors work (collapsible) ───────────────── -->
-   <div class="accordion mb-4" id="connectorDoc">
-      <div class="accordion-item border rounded-3 shadow-sm" style="background:var(--card-bg-color);border-color:var(--border-color)!important;">
-         <h2 class="accordion-header">
-            <button class="accordion-button collapsed rounded-3 fw-semibold" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#connectorDocBody"
-                    style="background:var(--card-bg-color);color:var(--text-color);font-size:.88rem;">
-               <i class="fa-solid fa-circle-info text-primary me-2"></i>How do connectors work?
-            </button>
-         </h2>
-         <div id="connectorDocBody" class="accordion-collapse collapse">
-            <div class="accordion-body pt-2" style="font-size:.85rem;">
-               <div class="row g-3">
-
-                  <!-- What is a connector -->
-                  <div class="col-12 col-md-4">
-                     <div class="p-3 rounded-3 h-100" style="background:var(--light-bg-color);border:1px solid var(--border-color);">
-                        <div class="fw-bold mb-1"><i class="fa-solid fa-plug text-primary me-2"></i>What is a connector?</div>
-                        <p class="mb-2 text-muted">A connector links this instance to another Rulezet instance. Once configured, you can trigger a <strong>pull</strong> to import detection rules from the remote instance into this one.</p>
-                        <ul class="mb-0 ps-3 text-muted" style="line-height:1.7;">
-                           <li><strong>Shadow user</strong> — a ghost account owns imported rules, keeping your account clean.</li>
-                           <li><strong>Become owner</strong> — you own all imported rules and bundles.</li>
-                           <li>The original rule <strong>source</strong> (e.g. GitHub URL) is always preserved.</li>
-                           <li>Rules store <strong>which instance</strong> they were synced from, even if the connector is later deleted.</li>
-                        </ul>
-                     </div>
-                  </div>
-
-                  <!-- Soft pull -->
-                  <div class="col-12 col-md-4">
-                     <div class="p-3 rounded-3 h-100" style="background:rgba(25,135,84,.07);border:1px solid rgba(25,135,84,.25);">
-                        <div class="fw-bold mb-1 text-success"><i class="fa-solid fa-feather me-2"></i>Soft pull — safe import</div>
-                        <ul class="mb-0 ps-3 text-muted" style="line-height:1.7;">
-                           <li>Fetches <strong>all</strong> rules from the remote.</li>
-                           <li>For each rule, checks locally by <strong>UUID</strong> then by <strong>content</strong>.</li>
-                           <li>If a match is found → <strong>skip</strong>, nothing is changed.</li>
-                           <li>If no match → the rule is <strong>added</strong>.</li>
-                        </ul>
-                        <div class="mt-2 text-muted" style="font-size:.78rem;"><i class="fa-solid fa-shield-check text-success me-1"></i>Existing rules, edits, and history are never affected.</div>
-                     </div>
-                  </div>
-
-                  <!-- Hard pull -->
-                  <div class="col-12 col-md-4">
-                     <div class="p-3 rounded-3 h-100" style="background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.35);">
-                        <div class="fw-bold mb-1 text-warning"><i class="fa-solid fa-bolt me-2"></i>Hard pull — force resync</div>
-                        <ul class="mb-0 ps-3 text-muted" style="line-height:1.7;">
-                           <li>Fetches <strong>all</strong> rules from the remote.</li>
-                           <li>For each rule, checks locally by <strong>UUID</strong> then by <strong>content</strong>.</li>
-                           <li>If a match is found → the local rule is <strong>moved to trash</strong> and replaced by the remote version.</li>
-                           <li>If no match → the rule is <strong>added</strong>.</li>
-                           <li>The local rule's update history is <strong>preserved</strong> and transferred to the new rule.</li>
-                        </ul>
-                        <div class="mt-2 text-muted" style="font-size:.78rem;"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>Use when the remote is authoritative and you want a full resync. Replaced rules can be restored from trash.</div>
-                     </div>
-                  </div>
-
-               </div>
-            </div>
-         </div>
-      </div>
+   <!-- ── How connectors work — link to doc page ─────────── -->
+   <div class="mb-4">
+      <a href="{{ url_for('connector.connector_how_it_works') }}"
+         class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded-pill text-decoration-none fw-semibold shadow-sm"
+         style="background:var(--card-bg-color);border:1px solid var(--border-color);color:var(--text-color);font-size:.875rem;transition:box-shadow .15s;">
+         <i class="fa-solid fa-book-open text-primary"></i>
+         How do connectors work?
+         <i class="fa-solid fa-arrow-right text-primary" style="font-size:.75rem;"></i>
+      </a>
    </div>
 
    <!-- ═══════════════════════════════════════════════════════
