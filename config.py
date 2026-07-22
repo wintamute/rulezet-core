@@ -75,7 +75,7 @@ class TestingConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = "postgresql:///rulezet"
+    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URI", "postgresql:///rulezet")
     SESSION_TYPE = "sqlalchemy"
     SESSION_SQLALCHEMY_TABLE = "flask_sessions"
     SESSION_COOKIE_SECURE   = True
