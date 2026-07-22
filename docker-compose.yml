@@ -1,0 +1,45 @@
+---
+
+services:
+  app:
+    build: .
+    ports:
+      - "7009:7009"
+    environment:
+      - FLASKENV=development
+      - DATABASE_URI=postgresql://rulezet:rulezetpw@db/rulezet
+      # Required — override in .env or at runtime:
+      - SECRET_KEY=changeme
+      # Mail — all optional, defaults match the original hardcoded values:
+      - MAIL_PASSWORD=changeme
+      # - MAIL_SERVER=smtp.gmail.com
+      # - MAIL_PORT=587
+      # - MAIL_USE_TLS=true
+      # - MAIL_USE_SSL=false
+      # - MAIL_USERNAME=rulezet.org@gmail.com
+      # - MAIL_DEFAULT_SENDER=rulezet.org@gmail.com
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - rules_github:/app/Rules_Github
+
+  db:
+    image: postgres:18-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=rulezet
+      - POSTGRES_PASSWORD=rulezetpw
+      - POSTGRES_DB=rulezet
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data:
+  rules_github:
