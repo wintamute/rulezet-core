@@ -13,3 +13,6 @@
 [submodule "app/modules/cti"]
 	path = app/modules/cti
 	url = https://github.com/mitre/cti
+[submodule "app/modules/rulezet-cast"]
+	path = app/modules/rulezet-cast
+	url = https://github.com/rulezet/rulezet-cast.git

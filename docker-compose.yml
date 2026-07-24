@@ -3,11 +3,12 @@
 services:
   app:
     build: .
+    image: rulezet-core
     ports:
       - "7009:7009"
     environment:
       - FLASKENV=development
-      - DATABASE_URI=postgresql://rulezet:rulezetpw@db/rulezet
+      - DATABASE_URL=postgresql://rulezet:rulezetpw@db/rulezet
       # Required — override in .env or at runtime:
       - SECRET_KEY=changeme
       # Mail — all optional, defaults match the original hardcoded values:
