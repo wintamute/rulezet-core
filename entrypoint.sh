@@ -24,11 +24,11 @@ except OSError:
 done
 echo "PostgreSQL is ready."
 
-# ── Seed on first run only ───────────────────────────────────────────────────
+# ── Migrate + seed on every boot (idempotent) ────────────────────────────────
 echo "Checking if database needs seeding or upgrading..."
 python3 - <<'EOF'
-from sqlalchemy import create_engine, MetaData, Table
-from flask_migrate import upgrade, check, stamp
+from sqlalchemy import MetaData, Table
+from flask_migrate import upgrade, stamp
 from app import create_app, db, _init_instance_config
 from app.core.utils.init_db import (
     create_admin, create_default_user,
@@ -43,26 +43,22 @@ metadata = MetaData()
 
 with app.app_context():
     metadata.reflect(bind=db.engine)
-    print("Checking DB for user table.")
-    if isinstance(metadata.tables.get('user'), Table):
-        print("Database already has User table, upgrading and checking for admin user.")
-        upgrade()
-        if not User.query.filter_by(email="admin@admin.admin").first():
-            db.create_all()
-            stamp()
-            admin, raw_password = create_admin()
-            create_default_user()
-            insert_default_formats()
-            seed_official_connector()
-            _init_instance_config(app)
-            seed_default_tags(admin)
-            show_admin_first_connection(admin, raw_password)
-        else:
-            print("Database already seeded — skipping.")
-    else:
-        print("Database needs seeding — initializing database.")
+    has_schema = isinstance(metadata.tables.get('user'), Table)
+    is_tracked = isinstance(metadata.tables.get('alembic_version'), Table)
+
+    if not has_schema:
+        print("Fresh database — creating schema and stamping migrations at head.")
         db.create_all()
         stamp()
+    elif not is_tracked:
+        print("Existing database predates migrations — stamping at head without replaying history.")
+        stamp()
+    else:
+        print("Running database migrations (no-op if already up to date)...")
+        upgrade()
+
+    if not User.query.filter_by(email="admin@admin.admin").first():
+        print("No admin user found — seeding database.")
         admin, raw_password = create_admin()
         create_default_user()
         insert_default_formats()
@@ -70,6 +66,8 @@ with app.app_context():
         _init_instance_config(app)
         seed_default_tags(admin)
         show_admin_first_connection(admin, raw_password)
+    else:
+        print("Database already seeded — skipping.")
 EOF
 
 # ── Start application ────────────────────────────────────────────────────────
