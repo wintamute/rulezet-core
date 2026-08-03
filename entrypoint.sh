@@ -48,8 +48,7 @@ with app.app_context():
 
     if not has_schema:
         print("Fresh database — creating schema and stamping migrations at head.")
-        db.create_all()
-        stamp()
+        upgrade()
     elif not is_tracked:
         print("Existing database predates migrations — stamping at head without replaying history.")
         stamp()
