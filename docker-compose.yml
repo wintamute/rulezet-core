@@ -19,6 +19,7 @@ services:
       # - MAIL_USE_SSL=false
       # - MAIL_USERNAME=rulezet.org@gmail.com
       # - MAIL_DEFAULT_SENDER=rulezet.org@gmail.com
+      - YARA_ADDITIONAL_EXTERNAL=package
     depends_on:
       db:
         condition: service_healthy
