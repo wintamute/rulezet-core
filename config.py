@@ -42,7 +42,7 @@ class Config:
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', os.environ.get('MAIL_USERNAME', ''))
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
    
-    
+    YARA_ADDITIONAL_EXTERNAL = os.environ.get('YARA_ADDITIONAL_EXTERNAL', {})
 
 
 

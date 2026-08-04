@@ -5,6 +5,7 @@ import yara
 from app.features.rule.rule_core import get_rule
 from app.features.rule.rule_format.abstract_rule_type.rule_type_abstract import RuleType, ValidationResult
 from app.core.utils.utils import detect_cve
+from app import app
 
 
 #################
@@ -40,10 +41,11 @@ class YaraRule(RuleType):
     #   Abstract section  #
     # ---------------------#
     def validate(self, content: str, **kwargs) -> ValidationResult:
+            # all allowed external variables, based on thor/loki plus additional user defined variables set via config
             ALLOWED_EXTERNALS = {
                 "filename", "filepath", "extension", "filetype", 
                 "md5", "sha1", "sha256", "owner", "new_file"
-            }
+            }.update(app.config.get('YARA_ADDITIONAL_EXTERNAL'))
             
             externals = {}
             attempts = 0
